@@ -1,4 +1,6 @@
 import express, { type Express } from "express";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
@@ -30,5 +32,19 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
+
+// In Render's single-service deployment, the API process also serves the
+// built Vite app so the browser and /api requests share one origin.
+const nbaWebDir = path.resolve(process.cwd(), "artifacts/nba-snipes/dist/public");
+if (existsSync(path.join(nbaWebDir, "index.html"))) {
+  app.use(express.static(nbaWebDir, { index: false }));
+  app.get("/{*splat}", (req, res) => {
+    if (req.path === "/api" || req.path.startsWith("/api/")) {
+      res.status(404).json({ error: "API endpoint not found" });
+      return;
+    }
+    res.sendFile(path.join(nbaWebDir, "index.html"));
+  });
+}
 
 export default app;

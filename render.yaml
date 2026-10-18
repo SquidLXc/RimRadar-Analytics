@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: nba-snipes-analytics
+    runtime: node
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm run build:render
+    startCommand: pnpm run start:render
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production

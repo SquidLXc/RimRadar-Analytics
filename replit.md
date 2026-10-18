@@ -1,6 +1,6 @@
-# [Project name]
+# NBA Snipes Analytics
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+An NBA-focused player-prop analytics site with a Render-ready single-service deployment.
 
 ## Run & Operate
 
@@ -9,7 +9,9 @@ _Replace the heading above with the project's name, and this line with one sente
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `pnpm run build:render` / `pnpm run start:render` — build and run the combined app as one Render Node service
+- No NBA or sportsbook provider is connected yet; the app uses clearly labeled demo data.
+- Keep future third-party credentials in deployment environment variables, never in source control.
 
 ## Stack
 
@@ -22,23 +24,32 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/nba-snipes/` — NBA web app
+- `artifacts/api-server/src/routes/nba.ts` — NBA API routes
+- `artifacts/api-server/src/providers/nba.ts` — replaceable provider, currently illustrative demo data
+- `lib/api-spec/openapi.yaml` — source of truth for API types and generated hooks
+- `render.yaml` — one-service Render Blueprint
+- `README.md` — local and Render deployment notes
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- The NBA frontend and `/api` endpoints share one origin on Render; Express serves both the built Vite app and API.
+- The initial provider is demo-only. Live stats, injury, schedule, and sportsbook data require a separately selected provider.
+- Watchlists and slip-builder state are browser-local; no account or server-side personal data is required yet.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+The app is modeled on the user's separate NHL analytics product, with NBA stat markets and no hockey-specific goalie features. It includes an overview, ranked signals, props, slip builder, matchups, player/team profiles, watchlist, live-alert state, audit trail, and model performance.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Build this as a separate NBA product; do not modify the NHL reference repository.
+- The app must work on Render.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Demo schedules, stats, lines, and model values are illustrative—not current or verified data.
+- Use generated API hooks from `@workspace/api-client-react` for frontend calls and keep OpenAPI/codegen in sync.
 
 ## Pointers
 
