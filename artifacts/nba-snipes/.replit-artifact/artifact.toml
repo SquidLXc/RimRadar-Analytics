@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "NBA Snipes Analytics"
+description = "An NBA analytics and player-prop research platform for basketball fans and analysts. It brings together an at-a-glance slate dashboard, ranked player projections, sportsbook lines, matchup and player research, saved picks, live game alerts, and transparent model tracking, with clear separation between verified live feeds and demo data."
+version = "1.0.0"
+id = "artifacts/nba-snipes"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24688
+
+[services.development]
+run = "pnpm --filter @workspace/nba-snipes run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/nba-snipes", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/nba-snipes/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24688"
+BASE_PATH = "/"
