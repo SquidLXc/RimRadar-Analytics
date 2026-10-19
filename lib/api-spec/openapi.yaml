@@ -372,11 +372,11 @@ components:
       type: object
       properties:
         team: { $ref: "#/components/schemas/Team" }
-        wins: { type: integer }
-        losses: { type: integer }
-        pace: { type: number }
-        offensiveRating: { type: number }
-        defensiveRating: { type: number }
+        wins: { type: ["integer", "null"] }
+        losses: { type: ["integer", "null"] }
+        pace: { type: ["number", "null"] }
+        offensiveRating: { type: ["number", "null"] }
+        defensiveRating: { type: ["number", "null"] }
         roster:
           type: array
           items: { $ref: "#/components/schemas/Player" }

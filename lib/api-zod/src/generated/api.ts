@@ -312,11 +312,11 @@ export const GetNbaTeamResponse = zod.object({
   "division": zod.string(),
   "color": zod.string()
 }),
-  "wins": zod.number().int(),
-  "losses": zod.number().int(),
-  "pace": zod.number(),
-  "offensiveRating": zod.number(),
-  "defensiveRating": zod.number(),
+  "wins": zod.number().int().nullable(),
+  "losses": zod.number().int().nullable(),
+  "pace": zod.number().nullable(),
+  "offensiveRating": zod.number().nullable(),
+  "defensiveRating": zod.number().nullable(),
   "roster": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),

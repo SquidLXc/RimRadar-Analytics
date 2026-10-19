@@ -11,11 +11,16 @@ import type { Team } from './team';
 
 export interface TeamDetail {
   team: Team;
-  wins: number;
-  losses: number;
-  pace: number;
-  offensiveRating: number;
-  defensiveRating: number;
+  /** @nullable */
+  wins: number | null;
+  /** @nullable */
+  losses: number | null;
+  /** @nullable */
+  pace: number | null;
+  /** @nullable */
+  offensiveRating: number | null;
+  /** @nullable */
+  defensiveRating: number | null;
   roster: Player[];
   dataStatus: DataStatus;
 }
