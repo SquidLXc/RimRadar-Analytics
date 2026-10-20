@@ -57,3 +57,7 @@ Thumbs.db
 .api-dev.log
 screenshots/
 .freebuff/
+.tmp-*
+
+# local audit ledger
+.data/

@@ -10,6 +10,8 @@ export type AuditRecordStatus = typeof AuditRecordStatus[keyof typeof AuditRecor
 
 
 export const AuditRecordStatus = {
-  demo: 'demo',
-  verified: 'verified',
+  pending: 'pending',
+  won: 'won',
+  lost: 'lost',
+  push: 'push',
 } as const;

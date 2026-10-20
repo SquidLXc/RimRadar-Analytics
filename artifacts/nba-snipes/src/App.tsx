@@ -2,20 +2,22 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
 import {
   Activity, ArrowUpRight, BarChart3, Bell, BrainCircuit, CalendarDays, ChevronRight,
-  CircleAlert, Clock3, Database, ExternalLink, Gauge, Heart, Info, Menu, RefreshCw,
+  CircleAlert, Clock3, Database, ExternalLink, Flame, Gauge, Heart, Info, Menu, MessageCircle, RefreshCw,
   Search, Shield, Sparkles, Star, Target, TrendingUp, Trophy, Users, X, Zap, Instagram,
 } from 'lucide-react';
 import {
   getAuditQueryKey, getDashboardSummaryQueryKey, getDataHealthQueryKey, getFutureGamesQueryKey,
   getGameQueryKey, getLiveAlertsQueryKey, getMatchupsQueryKey, getModelPerformanceQueryKey,
   getOddsQueryKey, getPicksQueryKey, getPicksStatusQueryKey, getPlayerQueryKey, getPlayersQueryKey, getPropsQueryKey,
+  getFirstBasketQueryKey, getFirstBasketStatusQueryKey, getFirstBasketAlertsQueryKey, getDiscordQueryKey,
   getTeamQueryKey, getTeamsQueryKey, getTodayGamesQueryKey, useDashboardSummary, useDataHealth,
   useGetAudit, useGetFutureGames, useGetGame, useGetLiveAlerts, useGetMatchups,
   useGetModelPerformance, useGetOdds, useGetPicks, useGetPicksStatus, useGetPlayer, useGetPlayers, useGetProps,
+  useGetFirstBasket, useGetFirstBasketStatus, useGetFirstBasketAlerts, useGetDiscord, useRefreshNbaModel,
   useGetTeam, useGetTeams, useGetTodayGames, useHealthCheck, useSyncNbaData,
 } from '@/lib/api-hooks';
 import type {
-  AuditRecord, DataStatus, DashboardSummary, Game, LiveAlert, Matchup,
+  AuditRecord, DataStatus, DashboardSummary, FirstBasketAlerts, FirstBasketEntry, FirstBasketStatus, Game, LiveAlert, Matchup,
   ModelPerformance, OddsFeed, Pick, PicksStatus, Player, PlayerDetail, Prop, Team, TeamDetail,
 } from '@workspace/api-client-react';
 import { PlayerImage, TeamCrest } from '@/components/assets';
@@ -29,6 +31,7 @@ type Market = (typeof markets)[number];
 const nav = [
   { href: '/', label: 'Overview', icon: Gauge },
   { href: '/picks', label: 'Radar Picks', icon: Target, hot: true },
+  { href: '/first-basket', label: 'First basket', icon: Flame },
   { href: '/props', label: 'Prop board', icon: BarChart3 },
   { href: '/matchups', label: 'Matchups', icon: Trophy },
   { href: '/players', label: 'Players', icon: Users },
@@ -47,6 +50,23 @@ function fmt(value: number | null | undefined, digits = 1) {
 function pct(value: number | null | undefined) {
   if (value === null || value === undefined) return '—';
   return `${(value * 100).toFixed(1)}%`;
+}
+
+function american(value: number | null | undefined) {
+  if (value === null || value === undefined) return '—';
+  return value > 0 ? `+${value}` : `${value}`;
+}
+
+function ResultPill({ result }: { result: FirstBasketEntry['result'] | AuditRecord['status'] }) {
+  const tone =
+    result === 'won'
+      ? 'border-primary/30 bg-primary/10 text-primary'
+      : result === 'lost'
+        ? 'border-destructive/30 bg-destructive/10 text-destructive'
+        : result === 'pending'
+          ? 'border-accent/30 bg-accent/10 text-accent'
+          : 'border-border bg-muted text-muted-foreground';
+  return <span className={`rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-wider ${tone}`}>{result}</span>;
 }
 
 function shortDate(value: string | Date | null | undefined) {
@@ -210,6 +230,26 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const health = useDataHealth({ queryKey: getDataHealthQueryKey() });
   const alerts = useGetLiveAlerts({ queryKey: getLiveAlertsQueryKey(), refetchInterval: 60_000 });
+  const discord = useGetDiscord({ queryKey: getDiscordQueryKey() });
+  const joinUrl = discord.data?.joinUrl ?? null;
+  const [discordNotice, setDiscordNotice] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const status = new URLSearchParams(window.location.search).get('discord');
+    if (status === 'success') return 'You are in. Welcome to the RimRaider Discord.';
+    if (status === 'already_joined') return 'You are already a member of the RimRaider Discord.';
+    if (status === 'error') return 'Discord join failed. Try the invite link again.';
+    return null;
+  });
+
+  useEffect(() => {
+    if (!discordNotice) return;
+    const url = new URL(window.location.href);
+    ['discord', 'reason', 'code'].forEach((param) => url.searchParams.delete(param));
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    const timer = window.setTimeout(() => setDiscordNotice(null), 7000);
+    return () => window.clearTimeout(timer);
+  }, [discordNotice]);
+
   const feedLabel = health.isLoading
     ? 'CHECKING FEED'
     : health.isError
@@ -268,6 +308,17 @@ function AppShell({ children }: { children: React.ReactNode }) {
           >
             <Instagram size={15} /> Daily plays <ExternalLink size={11} className="ml-auto opacity-50" />
           </a>
+          {joinUrl ? (
+            <a
+              href={joinUrl}
+              target={joinUrl.startsWith('http') ? '_blank' : undefined}
+              rel={joinUrl.startsWith('http') ? 'noopener noreferrer' : undefined}
+              className="mb-2 flex items-center gap-3 rounded-lg border border-[#5865F2]/30 bg-[#5865F2]/10 px-3 py-2.5 text-xs font-semibold text-[#98a4ff] hover:bg-[#5865F2]/20"
+            >
+              <MessageCircle size={15} /> Join Discord
+              <ExternalLink size={11} className="ml-auto opacity-60" />
+            </a>
+          ) : null}
           <Link
             href="/admin"
             onClick={() => setOpen(false)}
@@ -345,6 +396,16 @@ function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
               ) : null}
             </div>
+            {joinUrl ? (
+              <a
+                href={joinUrl}
+                target={joinUrl.startsWith('http') ? '_blank' : undefined}
+                rel={joinUrl.startsWith('http') ? 'noopener noreferrer' : undefined}
+                className="hidden items-center gap-2 rounded-lg border border-[#5865F2]/35 bg-[#5865F2]/10 px-3 py-2 text-[11px] font-semibold text-[#98a4ff] hover:bg-[#5865F2]/20 sm:flex"
+              >
+                <MessageCircle size={14} /> Join Discord
+              </a>
+            ) : null}
             <Link
               href="/admin"
               className="hidden items-center gap-2 rounded-lg border border-border px-3 py-2 text-[11px] font-semibold text-muted-foreground hover:border-primary/40 hover:text-foreground sm:flex"
@@ -362,6 +423,16 @@ function AppShell({ children }: { children: React.ReactNode }) {
           <p>Schedule, scores, rosters and injury data from ESPN. Game lines are as reported by ESPN's sportsbook partners. Informational only.</p>
         </footer>
       </div>
+
+      {discordNotice ? (
+        <div className="fixed bottom-5 right-5 z-50 flex max-w-sm items-start gap-3 rounded-xl border border-border bg-card/95 p-4 shadow-2xl">
+          <MessageCircle size={18} className="mt-0.5 shrink-0 text-[#98a4ff]" />
+          <p className="text-xs leading-5 text-foreground">{discordNotice}</p>
+          <button onClick={() => setDiscordNotice(null)} className="ml-1 text-muted-foreground hover:text-foreground">
+            <X size={14} />
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -580,12 +651,132 @@ function InjuryPanel() {
   );
 }
 
+function FirstBasketLivePanel() {
+  const query = useGetFirstBasketAlerts({
+    queryKey: getFirstBasketAlertsQueryKey(),
+    refetchInterval: 15_000,
+  });
+  const feed: FirstBasketAlerts | undefined = query.data;
+  const events = feed?.events ?? [];
+  const today = useGetTodayGames({ queryKey: getTodayGamesQueryKey() });
+  const upcoming = (today.data ?? [])
+    .filter((game) => game.status === 'scheduled' && new Date(game.tipoff).getTime() > Date.now())
+    .sort((a, b) => new Date(a.tipoff).getTime() - new Date(b.tipoff).getTime());
+  const nextTipoff = upcoming[0];
+  const latest = events[events.length - 1];
+  const [previousId, setPreviousId] = useState<string | null>(null);
+  const [fresh, setFresh] = useState(false);
+
+  useEffect(() => {
+    if (!latest || latest.id === previousId) return;
+    setFresh(true);
+    setPreviousId(latest.id);
+    const timer = window.setTimeout(() => setFresh(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [latest, previousId]);
+
+  const status = query.isLoading
+    ? 'CHECKING'
+    : query.isError
+      ? 'OFFLINE'
+      : feed?.mode === 'live'
+        ? 'LIVE'
+        : feed?.mode === 'final'
+          ? 'FINAL'
+          : 'WAITING';
+  const recent = [...events].reverse().slice(0, 6);
+
+  return (
+    <>
+      {latest ? (
+        <div
+          className={`rounded-xl border-2 p-4 transition-all duration-300 ${
+            fresh
+              ? 'animate-pulse border-accent bg-accent/20 shadow-[0_0_30px_rgba(255,83,207,0.45)]'
+              : 'border-accent/30 bg-accent/10'
+          }`}
+        >
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="font-mono text-[9px] uppercase tracking-wider text-accent">
+              {fresh ? '🚨 First basket landed' : 'Latest first basket'}
+            </span>
+            <span className="font-mono text-[9px] text-muted-foreground">
+              {latest.periodLabel} {latest.clock}
+            </span>
+          </div>
+          <div className="flex items-end justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-lg font-bold leading-tight">{latest.playerName}</p>
+              <p className="mt-1 font-mono text-sm text-primary">{latest.team}</p>
+            </div>
+            <p className="shrink-0 font-mono text-base font-bold">
+              {latest.awayTeam} {latest.awayScore ?? '—'} — {latest.homeScore ?? '—'} {latest.homeTeam}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      <section className="rounded-xl border border-accent/25 bg-accent/5 p-4">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[.16em] text-accent">Live first basket alerts</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Confirmed first made field goals from ESPN play-by-play
+            </p>
+          </div>
+          <span
+            className={`rounded-full border px-2 py-1 font-mono text-[9px] uppercase tracking-wider ${
+              status === 'LIVE' ? 'border-primary/30 bg-primary/10 text-primary' : 'border-accent/30 text-accent'
+            }`}
+          >
+            {status}
+          </span>
+        </div>
+        <div aria-live="polite" className="max-h-[122px] overflow-y-auto rounded-lg border border-border/80 bg-background/70 px-3">
+          {query.isError ? (
+            <div className="flex h-[104px] items-center gap-2 text-[11px] text-muted-foreground">
+              <CircleAlert size={14} className="text-destructive" /> Live alert feed unavailable.
+            </div>
+          ) : recent.length > 0 ? (
+            <div className="py-2">
+              {recent.map((alert) => (
+                <div key={alert.id} className="flex min-w-0 items-center gap-2 py-1 font-mono text-[10px] uppercase tracking-[.04em]">
+                  <span className="shrink-0 text-accent">1st</span>
+                  <span className="truncate text-foreground">{alert.playerName}</span>
+                  <span className="shrink-0 text-primary">{alert.team}</span>
+                  <span className="hidden shrink-0 text-muted-foreground sm:inline">
+                    {alert.periodLabel} {alert.clock}
+                  </span>
+                  <span className="ml-auto shrink-0 text-foreground">
+                    {alert.awayTeam} {alert.awayScore ?? '—'} — {alert.homeScore ?? '—'} {alert.homeTeam}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex h-[104px] items-center text-[11px] text-muted-foreground">
+              {feed?.mode === 'live'
+                ? 'Live games are in progress. The first confirmed basket will appear here.'
+                : nextTipoff
+                  ? `${upcoming.length} game${upcoming.length === 1 ? '' : 's'} on today's slate. First tip-off ${gameTime(nextTipoff.tipoff)}. Baskets appear here after tip-off.`
+                  : feed?.mode === 'final'
+                    ? 'Today\u2019s first baskets are in. The next slate fills this feed after tip-off.'
+                    : 'No games live. Confirmed first baskets appear here during play.'}
+            </div>
+          )}
+        </div>
+      </section>
+    </>
+  );
+}
+
 function Home() {
   const summary = useDashboardSummary({ queryKey: getDashboardSummaryQueryKey() });
   const today = useGetTodayGames({ queryKey: getTodayGamesQueryKey() });
   const future = useGetFutureGames({ queryKey: getFutureGamesQueryKey() });
   const odds = useGetOdds({ queryKey: getOddsQueryKey() });
   const picks = useGetPicks(undefined, { queryKey: getPicksQueryKey() });
+  const firstBasket = useGetFirstBasket({ queryKey: getFirstBasketQueryKey() });
   const [watchlist, toggleWatch] = useWatchlist();
 
   const data = summary.data;
@@ -619,11 +810,14 @@ function Home() {
             />
           </div>
           <div className="flex w-full flex-col gap-3 md:max-w-[360px]">
+            <FirstBasketLivePanel />
             <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-              <p className="font-mono text-[10px] uppercase tracking-[.16em] text-primary">Provider</p>
-              <p className="mt-2 text-xl font-bold">{data?.dataStatus?.provider ?? 'ESPN'}</p>
-              <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
-                {data?.dataStatus?.message ?? 'Waiting for the API server.'}
+              <p className="font-mono text-[10px] uppercase tracking-[.16em] text-primary">Model build</p>
+              <p className="mt-2 text-base font-bold">
+                {data?.modelVersion === 'data-only' ? 'Data-only mode' : data?.modelVersion ?? 'Awaiting feed'}
+              </p>
+              <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-muted-foreground">
+                {data?.dataStatus?.provider ?? 'ESPN'} · {data?.dataStatus?.message ?? 'Waiting for the API server.'}
               </p>
             </div>
           </div>
@@ -648,6 +842,55 @@ function Home() {
           icon={Target}
         />
       </div>
+
+      <section className="mb-6 rounded-xl border border-border bg-card/70 p-5 md:p-6">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[.18em] text-accent">First basket / model board</p>
+            <h2 className="mt-1 text-lg font-bold tracking-[-.03em]">Anytime first basket</h2>
+          </div>
+          <Link href="/first-basket" className="flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-primary">
+            Full tracker <ArrowUpRight size={13} />
+          </Link>
+        </div>
+        <QueryState
+          loading={firstBasket.isLoading}
+          error={firstBasket.isError}
+          errorMessage={firstBasket.error?.message}
+          empty={!firstBasket.isLoading && !firstBasket.isError && (firstBasket.data ?? []).length === 0}
+          emptyTitle="No first-basket projections"
+          emptyBody="The tracker needs an upcoming DunkAPI slate. It fills in as soon as games are scheduled."
+          onRetry={() => void firstBasket.refetch()}
+        >
+          <div className="grid gap-2 md:grid-cols-2">
+            {(firstBasket.data ?? []).slice(0, 6).map((entry) => (
+              <div key={entry.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/30 p-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{entry.playerName}</p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    {entry.team} vs {entry.opponent} · {gameTime(entry.tipoff)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <div className="text-right">
+                    <p className="font-mono text-sm text-primary">{pct(entry.probability)}</p>
+                    <p className="text-[9px] uppercase text-muted-foreground">first basket</p>
+                  </div>
+                  <div className="hidden text-right sm:block">
+                    <p className="font-mono text-xs">{american(entry.fairOdds)}</p>
+                    <p className="text-[9px] uppercase text-muted-foreground">fair price</p>
+                  </div>
+                  <ResultPill result={entry.result} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </QueryState>
+        <p className="mt-3 text-[10px] leading-5 text-muted-foreground">
+          Model probability that each player scores the first made field goal. Free throws do not count.
+          The fair price is implied by the model, not a sportsbook quote.
+        </p>
+      </section>
 
       <div className="grid gap-6 [&>*]:min-w-0 xl:grid-cols-[1.15fr_.85fr]">
         <section className="rounded-xl border border-border bg-card/70 p-5 md:p-6">
@@ -817,7 +1060,9 @@ function PicksPage() {
         <span>
           {model?.lastUpdated ? `Updated ${new Date(model.lastUpdated).toLocaleTimeString()}` : 'Not generated yet'}
         </span>
-        <span className="ml-auto">{model?.creditsSpent ?? 0} DunkAPI credits</span>
+        <span className="ml-auto">
+          {model?.creditsSpent ?? 0} credits used · {model?.creditsRemaining ?? '—'} left
+        </span>
       </div>
       {model?.message ? <p className="mb-4 text-xs text-muted-foreground">{model.message}</p> : null}
       <div className="rounded-xl border border-border bg-card/70 p-5 md:p-6">
@@ -894,6 +1139,137 @@ function PicksPage() {
           />
         ) : null}
       </div>
+    </>
+  );
+}
+
+function FirstBasketPage() {
+  const query = useGetFirstBasket({ queryKey: getFirstBasketQueryKey(), refetchInterval: 120_000 });
+  const status = useGetFirstBasketStatus({ queryKey: getFirstBasketStatusQueryKey() });
+  const entries: FirstBasketEntry[] = query.data ?? [];
+  const model: FirstBasketStatus | undefined = status.data;
+
+  const groups = useMemo(() => {
+    const map = new Map<string, FirstBasketEntry[]>();
+    entries.forEach((entry) => {
+      const list = map.get(entry.gameId) ?? [];
+      list.push(entry);
+      map.set(entry.gameId, list);
+    });
+    return [...map.entries()].map(([gameId, rows]) => ({
+      gameId,
+      rows: [...rows].sort((a, b) => b.probability - a.probability),
+    }));
+  }, [entries]);
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="First made field goal / model board"
+        title="First basket tracker"
+        copy="Every player with a priced points market is projected for this game, then scored by their share of the team's expected points. The market settles on the first made field goal; free throws do not count."
+        action={
+          <button
+            onClick={() => void query.refetch()}
+            className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:border-primary/40 hover:text-primary"
+          >
+            <RefreshCw size={14} /> Refresh
+          </button>
+        }
+      />
+      <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-border bg-card/50 px-4 py-3 font-mono text-[10px] uppercase tracking-[.14em] text-muted-foreground">
+        <span className="text-primary">Model {model?.modelVersion ?? 'rimraider-first-basket-v1'}</span>
+        <span>{model?.gamesTracked ?? 0} games tracked</span>
+        <span>{model?.playersAnalyzed ?? 0} players analyzed</span>
+        <span>{model?.entriesGenerated ?? 0} projections</span>
+        <span>{model?.lastUpdated ? `Updated ${new Date(model.lastUpdated).toLocaleTimeString()}` : 'Not generated yet'}</span>
+        <span className="ml-auto">
+          {model?.creditsSpent ?? 0} credits used · {model?.creditsRemaining ?? '—'} left
+        </span>
+      </div>
+      {model?.message ? <p className="mb-4 text-xs text-muted-foreground">{model.message}</p> : null}
+      <div className="mb-5 rounded-xl border border-accent/25 bg-accent/5 px-4 py-3 text-[11px] leading-5 text-muted-foreground">
+        <span className="font-semibold text-accent">How to read this board.</span> There is no first-basket price in the
+        DunkAPI feed, so the tracker shows the model probability and the fair American price it implies. It is not a
+        sportsbook quote and there is no market edge column. Results are graded from ESPN play-by-play after tip-off.
+      </div>
+      <QueryState
+        loading={query.isLoading}
+        error={query.isError}
+        errorMessage={query.error?.message}
+        empty={!query.isLoading && !query.isError && entries.length === 0}
+        emptyTitle={model?.configured ? 'No first-basket projections yet' : 'First basket needs a DunkAPI key'}
+        emptyBody={model?.message ?? 'The tracker fills in when DunkAPI returns an upcoming slate with player props.'}
+        onRetry={() => void query.refetch()}
+      >
+        <div className="space-y-5">
+          {groups.map((group) => {
+            const first = group.rows[0];
+            const teams = [...new Set(group.rows.map((row) => row.team))];
+            return (
+              <section key={group.gameId} className="rounded-xl border border-border bg-card/70 p-5 md:p-6">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+                  <div>
+                    <p className="font-mono text-[9px] uppercase tracking-[.15em] text-muted-foreground">
+                      {shortDate(first.tipoff)} · {gameTime(first.tipoff)}
+                    </p>
+                    <h2 className="mt-1 text-base font-bold tracking-[-.02em]">{teams.join(' vs ')}</h2>
+                  </div>
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {group.rows.length} players modelled
+                  </span>
+                </div>
+                <div className="mb-3 hidden grid-cols-[1.6fr_.7fr_.7fr_.8fr_.7fr_auto] gap-4 border-b border-border pb-2 font-mono text-[9px] uppercase tracking-[.15em] text-muted-foreground md:grid">
+                  <span>Player / matchup</span>
+                  <span>Model</span>
+                  <span>Fair price</span>
+                  <span>Projected pts</span>
+                  <span>Team share</span>
+                  <span>Result</span>
+                </div>
+                <div>
+                  {group.rows.map((entry) => (
+                    <div key={entry.id} className="grid gap-2 border-b border-border/60 py-3 last:border-0 md:grid-cols-[1.6fr_.7fr_.7fr_.8fr_.7fr_auto] md:items-center md:gap-4">
+                      <div className="flex items-center justify-between gap-3 md:block">
+                        <div>
+                          <Link href={`/players/${entry.playerId}`} className="text-sm font-bold hover:text-primary">
+                            {entry.playerName}
+                          </Link>
+                          <p className="mt-0.5 text-[10px] text-muted-foreground">
+                            {entry.team} vs {entry.opponent} · {entry.confidence} confidence
+                          </p>
+                        </div>
+                        <div className="text-right md:hidden">
+                          <p className="font-mono text-sm text-primary">{pct(entry.probability)}</p>
+                          <p className="text-[9px] uppercase text-muted-foreground">model</p>
+                        </div>
+                      </div>
+                      <div className="hidden md:block">
+                        <p className="font-mono text-sm text-primary">{pct(entry.probability)}</p>
+                      </div>
+                      <div className="hidden md:block">
+                        <p className="font-mono text-sm">{american(entry.fairOdds)}</p>
+                      </div>
+                      <div className="hidden md:block">
+                        <p className="font-mono text-sm">{fmt(entry.projectedPoints)}</p>
+                      </div>
+                      <div className="hidden md:block">
+                        <p className="font-mono text-sm">{pct(entry.usageShare)}</p>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 md:justify-end">
+                        <span className="font-mono text-[10px] text-muted-foreground md:hidden">
+                          {american(entry.fairOdds)} · {fmt(entry.projectedPoints)} pts
+                        </span>
+                        <ResultPill result={entry.result} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      </QueryState>
     </>
   );
 }
@@ -1457,13 +1833,18 @@ function AuditPage() {
   const performance = useGetModelPerformance({ queryKey: getModelPerformanceQueryKey() });
   const rows: AuditRecord[] = audit.data ?? [];
   const metrics: ModelPerformance[] = performance.data ?? [];
+  const settled = rows.filter((record) => record.status !== 'pending');
+  const pending = rows.length - settled.length;
+  const wins = settled.filter((record) => record.status === 'won').length;
+  const losses = settled.filter((record) => record.status === 'lost').length;
+  const hitRate = wins + losses > 0 ? wins / (wins + losses) : null;
 
   return (
     <>
       <PageHeader
         eyebrow="Transparent history / no hindsight"
         title="Audit trail"
-        copy="Immutable prediction metadata and aggregate model performance. Records appear only after a model produces and scores picks."
+        copy="Every pick and first-basket projection is written here when the model runs, then graded from ESPN box scores and play-by-play after the game. Pending records are predictions that have not settled yet."
         action={
           <Link href="/admin" className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:border-primary/40">
             <Database size={14} /> Data health
@@ -1471,9 +1852,15 @@ function AuditPage() {
         }
       />
       <div className="mb-6 grid gap-3 sm:grid-cols-3">
-        {metrics.slice(0, 3).map((metric) => (
-          <StatCard key={metric.market} label={`${metric.market} hit rate`} value={pct(metric.hitRate)} note={`${metric.sampleSize} scored records`} accent="violet" icon={TrendingUp} />
-        ))}
+        <StatCard label="Predictions logged" value={rows.length} note={`${pending} pending settlement`} icon={Database} />
+        <StatCard label="Settled" value={settled.length} note="Graded from ESPN results" accent="violet" icon={TrendingUp} />
+        <StatCard
+          label="Hit rate"
+          value={hitRate === null ? '—' : pct(hitRate)}
+          note={wins + losses > 0 ? `${wins}W · ${losses}L` : 'No graded results yet'}
+          accent="magenta"
+          icon={Target}
+        />
       </div>
       <section className="rounded-xl border border-border bg-card/70 p-5 md:p-6">
         <div className="mb-4 flex items-center justify-between">
@@ -1485,13 +1872,15 @@ function AuditPage() {
           error={audit.isError}
           errorMessage={audit.error?.message}
           empty={!audit.isLoading && !audit.isError && rows.length === 0}
+          emptyTitle="No prediction records yet"
+          emptyBody="Records are written automatically when Radar Picks or the first-basket tracker runs. Leave the model with a DunkAPI slate and they will appear here."
           onRetry={() => void audit.refetch()}
         >
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-left text-xs">
               <thead className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  {['Recorded', 'Player', 'Team', 'Market', 'Projection', 'Status'].map((header) => (
+                  {['Recorded', 'Player', 'Market', 'Line', 'Model', 'Projection', 'Result'].map((header) => (
                     <th key={header} className="border-b border-border px-3 py-3">{header}</th>
                   ))}
                 </tr>
@@ -1500,15 +1889,23 @@ function AuditPage() {
                 {rows.map((record) => (
                   <tr key={record.id} className="border-b border-border/60 last:border-0">
                     <td className="px-3 py-3 text-muted-foreground">{shortDate(record.recordedAt)}</td>
-                    <td className="px-3 py-3 font-semibold">{record.playerName}</td>
-                    <td className="px-3 py-3">{record.team}</td>
-                    <td className="px-3 py-3 capitalize">{record.market}</td>
-                    <td className="px-3 py-3 font-mono">{fmt(record.projection)}</td>
                     <td className="px-3 py-3">
-                      <span className="rounded-full border border-muted bg-muted px-2 py-1 text-[9px] uppercase text-muted-foreground">
-                        {record.status}
-                      </span>
+                      <p className="font-semibold">{record.playerName}</p>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">
+                        {record.team}
+                        {record.actualScorer ? ` · first basket: ${record.actualScorer}` : ''}
+                      </p>
                     </td>
+                    <td className="px-3 py-3 capitalize">{record.market.replace('_', ' ')}</td>
+                    <td className="px-3 py-3 font-mono">{fmt(record.line)}</td>
+                    <td className="px-3 py-3 font-mono text-primary">{pct(record.probability)}</td>
+                    <td className="px-3 py-3 font-mono">
+                      {fmt(record.projection)}
+                      {record.actual !== null ? (
+                        <span className="ml-1 text-[9px] text-muted-foreground">→ {fmt(record.actual)}</span>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-3"><ResultPill result={record.status} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -1530,7 +1927,12 @@ function AuditPage() {
 function AdminPage() {
   const health = useHealthCheck();
   const dataHealth = useDataHealth({ queryKey: getDataHealthQueryKey() });
+  const props = useGetProps(undefined, { queryKey: getPropsQueryKey() });
+  const picksStatus = useGetPicksStatus({ queryKey: getPicksStatusQueryKey() });
+  const firstBasketStatus = useGetFirstBasketStatus({ queryKey: getFirstBasketStatusQueryKey() });
+  const discord = useGetDiscord({ queryKey: getDiscordQueryKey() });
   const { sync, isSyncing, result, error } = useSyncNbaData();
+  const { refresh: refreshModel, isRefreshing, result: modelResult, error: modelError } = useRefreshNbaModel();
   const [message, setMessage] = useState<string | null>(null);
 
   const runSync = async () => {
@@ -1543,6 +1945,60 @@ function AdminPage() {
     await Promise.all([health.refetch(), dataHealth.refetch()]);
     setMessage('Checks complete — the API is reachable. No import was run.');
   };
+
+  const runModel = async () => {
+    setMessage(null);
+    await refreshModel();
+    await Promise.all([
+      props.refetch(),
+      picksStatus.refetch(),
+      firstBasketStatus.refetch(),
+      dataHealth.refetch(),
+    ]);
+  };
+
+  const dunkConfigured = Boolean(picksStatus.data?.configured);
+  const propCount = props.data?.length ?? 0;
+  const picksCount = picksStatus.data?.picksGenerated ?? 0;
+  const firstBasketCount = firstBasketStatus.data?.entriesGenerated ?? 0;
+  const layers: Array<[string, string, boolean]> = [
+    ['Schedule & scores', 'Live · ESPN scoreboard', true],
+    ['Teams & rosters', 'Live · ESPN teams and rosters', true],
+    ['Injuries', 'Live · ESPN injury report', true],
+    ['Game lines (ML/spread/total)', 'Live · ESPN sportsbook partners', true],
+    [
+      'Player props',
+      propCount > 0
+        ? `Live · DunkAPI · ${propCount} modelled props`
+        : dunkConfigured
+          ? 'DunkAPI connected · no props on this slate'
+          : 'Not connected · add DUNKAPI_API_KEY',
+      propCount > 0,
+    ],
+    [
+      'Projection model',
+      picksCount > 0
+        ? `Live · ${picksStatus.data?.modelVersion ?? 'rimraider-v1'} · ${picksCount} picks`
+        : dunkConfigured
+          ? 'Connected · waiting for edges above the threshold'
+          : 'Not connected',
+      picksCount > 0,
+    ],
+    [
+      'First-basket model',
+      firstBasketCount > 0
+        ? `Live · ${firstBasketStatus.data?.modelVersion ?? 'rimraider-first-basket-v1'} · ${firstBasketCount} projections`
+        : dunkConfigured
+          ? 'Connected · waiting for an upcoming slate'
+          : 'Not connected',
+      firstBasketCount > 0,
+    ],
+    [
+      'Discord community',
+      discord.data?.configured ? 'Join link configured' : 'Not configured · set DISCORD_INVITE_URL',
+      Boolean(discord.data?.configured),
+    ],
+  ];
 
   return (
     <>
@@ -1559,6 +2015,14 @@ function AdminPage() {
             >
               <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
               {isSyncing ? 'Syncing ESPN data' : 'Sync ESPN data'}
+            </button>
+            <button
+              onClick={runModel}
+              disabled={isRefreshing}
+              className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:border-primary/40 hover:text-primary disabled:opacity-50"
+            >
+              <Zap size={14} className={isRefreshing ? 'animate-pulse' : ''} />
+              {isRefreshing ? 'Rebuilding model' : 'Rebuild model'}
             </button>
             <button
               onClick={runChecks}
@@ -1581,6 +2045,16 @@ function AdminPage() {
         </div>
       ) : null}
       {message ? <div className="mb-5 rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-xs text-primary">{message}</div> : null}
+      {modelResult ? (
+        <div className={`mb-5 rounded-lg border px-4 py-3 text-xs ${modelResult.ok ? 'border-primary/25 bg-primary/5 text-primary' : 'border-destructive/25 bg-destructive/5 text-destructive'}`}>
+          {modelResult.message}
+        </div>
+      ) : null}
+      {modelError ? (
+        <div className="mb-5 rounded-lg border border-destructive/25 bg-destructive/5 px-4 py-3 text-xs text-destructive">
+          Model refresh failed: {modelError.message}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="rounded-xl border border-border bg-card/70 p-5 md:p-6">
@@ -1657,14 +2131,7 @@ function AdminPage() {
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          {[
-            ['Schedule & scores', 'Live · ESPN scoreboard', true],
-            ['Teams & rosters', 'Live · ESPN teams and rosters', true],
-            ['Injuries', 'Live · ESPN injury report', true],
-            ['Game lines (ML/spread/total)', 'Live · ESPN sportsbook partners', true],
-            ['Player props', 'Not connected', false],
-            ['Projection model', 'Not connected', false],
-          ].map(([label, detail, available]) => (
+          {layers.map(([label, detail, available]) => (
             <div key={String(label)} className="flex items-center justify-between rounded-lg border border-border/70 bg-muted/30 p-3">
               <div>
                 <p className="text-xs font-semibold">{label}</p>
@@ -1675,6 +2142,92 @@ function AdminPage() {
           ))}
         </div>
       </section>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <section className="rounded-xl border border-border bg-card/70 p-5 md:p-6">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="rounded-lg bg-primary/10 p-2 text-primary"><Zap size={17} /></div>
+            <div>
+              <h2 className="font-bold">Model run</h2>
+              <p className="text-xs text-muted-foreground">Latest RimRaider generation</p>
+            </div>
+          </div>
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between border-b border-border/70 pb-3">
+              <span className="text-muted-foreground">Picks model</span>
+              <span className="font-mono text-xs">{picksStatus.data?.modelVersion ?? '—'}</span>
+            </div>
+            <div className="flex justify-between border-b border-border/70 pb-3">
+              <span className="text-muted-foreground">First-basket model</span>
+              <span className="font-mono text-xs">{firstBasketStatus.data?.modelVersion ?? '—'}</span>
+            </div>
+            <div className="flex justify-between border-b border-border/70 pb-3">
+              <span className="text-muted-foreground">Picks generated</span>
+              <span className="font-mono text-xs">{picksCount}</span>
+            </div>
+            <div className="flex justify-between border-b border-border/70 pb-3">
+              <span className="text-muted-foreground">First-basket projections</span>
+              <span className="font-mono text-xs">{firstBasketCount}</span>
+            </div>
+            <div className="flex justify-between border-b border-border/70 pb-3">
+              <span className="text-muted-foreground">Credits used this run</span>
+              <span className="font-mono text-xs">{picksStatus.data?.creditsSpent ?? 0}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Credits remaining</span>
+              <span className={`font-mono text-xs ${(picksStatus.data?.creditsRemaining ?? 100) < 25 ? 'text-accent' : ''}`}>
+                {picksStatus.data?.creditsRemaining ?? '—'}
+              </span>
+            </div>
+          </div>
+          <p className="mt-3 text-[10px] leading-5 text-muted-foreground">
+            {picksStatus.data?.message ?? 'Model status is loading.'}
+          </p>
+        </section>
+
+        <section className="rounded-xl border border-border bg-card/70 p-5 md:p-6">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="rounded-lg bg-[#5865F2]/15 p-2 text-[#98a4ff]"><MessageCircle size={17} /></div>
+            <div>
+              <h2 className="font-bold">Discord community</h2>
+              <p className="text-xs text-muted-foreground">Join button and auto-join configuration</p>
+            </div>
+            <span className={`ml-auto rounded-full border px-2 py-1 text-[9px] uppercase ${discord.data?.configured ? 'border-primary/30 text-primary' : 'border-accent/30 text-accent'}`}>
+              {discord.isLoading ? 'checking' : discord.data?.configured ? 'configured' : 'not configured'}
+            </span>
+          </div>
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between gap-4 border-b border-border/70 pb-3">
+              <span className="text-muted-foreground">Invite link</span>
+              <span className="max-w-[60%] truncate font-mono text-xs">{discord.data?.inviteUrl ?? '—'}</span>
+            </div>
+            <div className="flex justify-between border-b border-border/70 pb-3">
+              <span className="text-muted-foreground">OAuth auto-join</span>
+              <span className="font-mono text-xs">{discord.data?.oauth ? 'enabled' : 'not configured'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Guild</span>
+              <span className="font-mono text-xs">{discord.data?.guildId ?? '—'}</span>
+            </div>
+          </div>
+          {discord.data?.joinUrl ? (
+            <a
+              href={discord.data.joinUrl}
+              className="mt-4 inline-flex items-center gap-2 rounded-lg border border-[#5865F2]/35 bg-[#5865F2]/10 px-3 py-2 text-xs font-semibold text-[#98a4ff] hover:bg-[#5865F2]/20"
+            >
+              <MessageCircle size={14} /> Test join link <ExternalLink size={11} />
+            </a>
+          ) : (
+            <p className="mt-4 rounded-lg border border-border/70 bg-muted/30 p-3 text-[10px] leading-5 text-muted-foreground">
+              Add <span className="font-mono text-foreground">DISCORD_INVITE_URL</span> for a direct invite button, or set{' '}
+              <span className="font-mono text-foreground">DISCORD_CLIENT_ID</span>,{' '}
+              <span className="font-mono text-foreground">DISCORD_CLIENT_SECRET</span>,{' '}
+              <span className="font-mono text-foreground">DISCORD_GUILD_ID</span> and{' '}
+              <span className="font-mono text-foreground">DISCORD_BOT_TOKEN</span> for one-click auto-join.
+            </p>
+          )}
+        </section>
+      </div>
     </>
   );
 }
@@ -1782,6 +2335,7 @@ function Router() {
         <Switch>
           <Route path="/" component={Home} />
           <Route path="/picks" component={PicksPage} />
+          <Route path="/first-basket" component={FirstBasketPage} />
           <Route path="/props" component={PropsPage} />
           <Route path="/matchups" component={MatchupsPage} />
           <Route path="/players" component={PlayersPage} />

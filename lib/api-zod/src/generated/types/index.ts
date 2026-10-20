@@ -7,12 +7,21 @@
  */
 
 export * from './auditRecord';
+export * from './auditRecordConfidence';
 export * from './auditRecordStatus';
 export * from './dashboardSummary';
 export * from './dataHealth';
 export * from './dataHealthConnection';
 export * from './dataStatus';
 export * from './dataStatusMode';
+export * from './discordLink';
+export * from './firstBasketAlert';
+export * from './firstBasketAlerts';
+export * from './firstBasketAlertsMode';
+export * from './firstBasketEntry';
+export * from './firstBasketEntryConfidence';
+export * from './firstBasketEntryResult';
+export * from './firstBasketStatus';
 export * from './game';
 export * from './gameLog';
 export * from './gameStatus';
@@ -31,6 +40,7 @@ export * from './market';
 export * from './matchup';
 export * from './modelPerformance';
 export * from './modelPerformanceStatus';
+export * from './modelRefreshResult';
 export * from './oddsFeed';
 export * from './oddsGame';
 export * from './oddsMarket';

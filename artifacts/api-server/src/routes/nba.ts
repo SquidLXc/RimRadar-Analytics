@@ -5,6 +5,9 @@ import {
   GetNbaDashboardSummaryQueryParams,
   GetNbaDashboardSummaryResponse,
   GetNbaDataStatusResponse,
+  GetNbaFirstBasketAlertsResponse,
+  GetNbaFirstBasketResponse,
+  GetNbaFirstBasketStatusResponse,
   GetNbaFutureGamesResponse,
   GetNbaGameParams,
   GetNbaGameResponse,
@@ -27,6 +30,7 @@ import {
   GetNbaTeamResponse,
   GetNbaTeamsResponse,
   GetNbaTodayGamesResponse,
+  RefreshNbaModelResponse,
   SyncNbaDataResponse,
 } from "@workspace/api-zod";
 import { nbaProvider } from "../providers/nba";
@@ -126,6 +130,21 @@ router.get("/nba/picks", async (req, res) => {
   res.json(GetNbaPicksResponse.parse(await nbaProvider.getPicks(query.market)));
 });
 
+router.get("/nba/first-basket", async (_req, res) => {
+  const entries = await nbaProvider.getFirstBasket();
+  res.json(GetNbaFirstBasketResponse.parse(entries));
+});
+
+router.get("/nba/first-basket/status", async (_req, res) => {
+  const status = await nbaProvider.getFirstBasketStatus();
+  res.json(GetNbaFirstBasketStatusResponse.parse(status));
+});
+
+router.get("/nba/first-basket/alerts", async (_req, res) => {
+  const alerts = await nbaProvider.getFirstBasketAlerts();
+  res.json(GetNbaFirstBasketAlertsResponse.parse(alerts));
+});
+
 router.get("/nba/odds", async (_req, res) => {
   const feed = await nbaProvider.getOdds();
   res.json(GetNbaOddsResponse.parse(feed));
@@ -141,12 +160,12 @@ router.get("/nba/live-alerts", async (_req, res) => {
   res.json(GetNbaLiveAlertsResponse.parse(alerts));
 });
 
-router.get("/nba/model-performance", (_req, res) => {
-  res.json(GetNbaModelPerformanceResponse.parse(nbaProvider.getModelPerformance()));
+router.get("/nba/model-performance", async (_req, res) => {
+  res.json(GetNbaModelPerformanceResponse.parse(await nbaProvider.getModelPerformance()));
 });
 
-router.get("/nba/audit", (_req, res) => {
-  res.json(GetNbaAuditResponse.parse(nbaProvider.getAudit()));
+router.get("/nba/audit", async (_req, res) => {
+  res.json(GetNbaAuditResponse.parse(await nbaProvider.getAudit()));
 });
 
 router.get("/admin/data-health", async (_req, res) => {
@@ -157,6 +176,10 @@ router.get("/admin/data-health", async (_req, res) => {
 router.post("/admin/sync", async (_req, res) => {
   const result = await nbaProvider.sync();
   res.json(SyncNbaDataResponse.parse(result));
+});
+
+router.post("/admin/model/refresh", (_req, res) => {
+  res.json(RefreshNbaModelResponse.parse(nbaProvider.refreshModel()));
 });
 
 export default router;

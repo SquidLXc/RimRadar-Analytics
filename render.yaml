@@ -12,3 +12,17 @@ services:
         value: production
       - key: DUNKAPI_API_KEY
         sync: false
+      - key: DISCORD_INVITE_URL
+        sync: false
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_CLIENT_SECRET
+        sync: false
+      - key: DISCORD_GUILD_ID
+        sync: false
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: AUDIT_STORE_PATH
+        value: /tmp/rimraider-audit.json

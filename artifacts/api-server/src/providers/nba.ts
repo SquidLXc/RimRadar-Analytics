@@ -2,6 +2,8 @@ import type {
   DashboardSummary,
   DataHealth,
   DataStatus,
+  FirstBasketAlert,
+  FirstBasketAlerts,
   Game,
   GameLog,
   LiveAlert,
@@ -19,6 +21,10 @@ import type {
 } from "@workspace/api-zod";
 import { espnAdapter, leagueDate, type TeamRecord } from "./espn";
 import { picksProvider } from "./picks";
+import { firstBasketProvider } from "./firstBasket";
+import { auditProvider } from "./audit";
+import { dunkapi } from "./dunkapi";
+import { resultsProvider } from "./results";
 
 const GAME_CACHE_TTL = 5 * 60 * 1000;
 const STATIC_CACHE_TTL = 60 * 60 * 1000;
@@ -378,9 +384,75 @@ export const nbaProvider = {
     }
   },
 
-  getModelPerformance: (): ModelPerformance[] => [],
+  getModelPerformance: (): Promise<ModelPerformance[]> => auditProvider.getPerformance(),
 
-  getAudit: () => [],
+  getAudit: () => auditProvider.getAudit(),
+
+  getFirstBasket: () => firstBasketProvider.getEntries(),
+
+  getFirstBasketStatus: () => firstBasketProvider.getStatus(),
+
+  getFirstBasketAlerts: async (): Promise<FirstBasketAlerts> => {
+    const games = await loadTodayGames();
+    const started = games.filter((game) => game.status === "live" || game.status === "final");
+    if (started.length === 0) {
+      return { mode: "waiting", events: [], dataStatus: buildStatus() };
+    }
+
+    const events: FirstBasketAlert[] = [];
+    for (const game of started) {
+      const result = await resultsProvider.getGameResult(game.id);
+      const first = result?.firstBasket;
+      if (!first) continue;
+
+      const [minutes, seconds] = first.clock.split(":").map((part) => Number(part));
+      const remaining = Number.isFinite(minutes) && Number.isFinite(seconds) ? minutes * 60 + seconds : 0;
+      const elapsed = Math.max(0, (first.period - 1) * 720 + (720 - remaining));
+      const team = first.team || game.homeTeam.abbreviation;
+      const isHome = team === game.homeTeam.abbreviation;
+
+      events.push({
+        id: `${game.id}-first-basket`,
+        gameId: game.id,
+        playerId: first.playerId,
+        playerName: first.playerName,
+        team,
+        opponent: isHome ? game.awayTeam.abbreviation : game.homeTeam.abbreviation,
+        period: first.period,
+        periodLabel: first.periodLabel,
+        clock: first.clock,
+        homeTeam: game.homeTeam.abbreviation,
+        awayTeam: game.awayTeam.abbreviation,
+        homeScore: first.homeScore ?? game.homeScore,
+        awayScore: first.awayScore ?? game.awayScore,
+        createdAt: new Date(new Date(game.tipoff).getTime() + elapsed * 1000),
+      });
+    }
+
+    events.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const live = started.some((game) => game.status === "live");
+    return {
+      mode: live ? "live" : events.length > 0 ? "final" : "waiting",
+      events,
+      dataStatus: buildStatus(),
+    };
+  },
+
+  refreshModel: () => {
+    const remaining = dunkapi.status().creditsRemaining;
+    if (remaining !== null && remaining < 15) {
+      return {
+        ok: false,
+        message: `Only ${remaining} DunkAPI credits remain. A rebuild needs about 12 for one game, so add credits before refreshing.`,
+      };
+    }
+    picksProvider.clearCache();
+    firstBasketProvider.clearCache();
+    return {
+      ok: true,
+      message: "Model caches cleared. The next picks and first-basket request will rebuild from DunkAPI.",
+    };
+  },
 
   getDataHealth: async (): Promise<DataHealth> => {
     const [teams, games] = await Promise.all([loadTeams(), loadGames()]);

@@ -260,6 +260,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PicksStatus"
+  /nba/first-basket:
+    get:
+      operationId: getNbaFirstBasket
+      tags: [analytics]
+      summary: List model probabilities for the first made basket of each game
+      responses:
+        "200":
+          description: First-basket tracker entries with model probability, fair price and grading result. Empty when no key is configured or no games are upcoming.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FirstBasketEntry"
+  /nba/first-basket/status:
+    get:
+      operationId: getNbaFirstBasketStatus
+      tags: [analytics]
+      summary: Get first-basket model and provider status
+      responses:
+        "200":
+          description: First-basket model status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FirstBasketStatus"
+  /nba/first-basket/alerts:
+    get:
+      operationId: getNbaFirstBasketAlerts
+      tags: [analytics]
+      summary: Get confirmed first-basket events from today's ESPN games
+      responses:
+        "200":
+          description: Live or final first-basket alerts. Empty until a game starts and the first field goal is confirmed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FirstBasketAlerts"
   /nba/matchups:
     get:
       operationId: getNbaMatchups
@@ -350,6 +388,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SyncResult"
+  /admin/model/refresh:
+    post:
+      operationId: refreshNbaModel
+      tags: [health]
+      summary: Clear the picks and first-basket model caches
+      responses:
+        "200":
+          description: Cache clear result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelRefreshResult"
+  /community/discord:
+    get:
+      operationId: getDiscordLink
+      tags: [community]
+      summary: Get the configured Discord invite or OAuth join link
+      responses:
+        "200":
+          description: Discord join configuration. Nothing is fabricated when no invite or OAuth app is configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscordLink"
 components:
   schemas:
     HealthStatus:
@@ -375,7 +437,7 @@ components:
       required: [mode, provider, lastUpdated, message]
     Market:
       type: string
-      enum: [points, rebounds, assists, threes, steals, blocks, turnovers, pra]
+      enum: [points, rebounds, assists, threes, steals, blocks, turnovers, pra, first_basket]
     Team:
       type: object
       properties:
@@ -522,10 +584,11 @@ components:
         lastUpdated: { type: [string, "null"], format: date-time }
         message: { type: string }
         creditsSpent: { type: integer, description: Estimated DunkAPI credits spent by this server process. }
+        creditsRemaining: { type: ["integer", "null"], description: Account balance reported by DunkAPI, when the provider sends it. }
         slateGames: { type: integer }
         playersAnalyzed: { type: integer }
         picksGenerated: { type: integer }
-      required: [configured, provider, modelVersion, lastUpdated, message, creditsSpent, slateGames, playersAnalyzed, picksGenerated]
+      required: [configured, provider, modelVersion, lastUpdated, message, creditsSpent, creditsRemaining, slateGames, playersAnalyzed, picksGenerated]
     Matchup:
       type: object
       properties:
@@ -639,10 +702,17 @@ components:
       type: object
       properties:
         id: { type: string }
+        gameId: { type: string }
+        playerId: { type: [string, "null"] }
         playerName: { type: string }
         team: { type: string }
         market: { $ref: "#/components/schemas/Market" }
+        line: { type: [number, "null"] }
         projection: { type: number }
+        probability: { type: number, minimum: 0, maximum: 1 }
+        odds: { type: ["integer", "null"] }
+        confidence: { type: string, enum: [low, medium, high] }
+        modelVersion: { type: string }
         dataInputs:
           type: array
           items: { type: string }
@@ -650,6 +720,89 @@ components:
           type: array
           items: { type: string }
         recordedAt: { type: string, format: date-time }
-        status: { type: string, enum: [demo, verified] }
-      required: [id, playerName, team, market, projection, dataInputs, adjustments, recordedAt, status]
+        status: { type: string, enum: [pending, won, lost, push] }
+        actual: { type: [number, "null"] }
+        actualScorer: { type: [string, "null"] }
+        settledAt: { type: [string, "null"], format: date-time }
+      required: [id, gameId, playerId, playerName, team, market, line, projection, probability, odds, confidence, modelVersion, dataInputs, adjustments, recordedAt, status, actual, actualScorer, settledAt]
+    FirstBasketEntry:
+      type: object
+      properties:
+        id: { type: string }
+        gameId: { type: string }
+        gameDate: { type: string, format: date }
+        tipoff: { type: string, format: date-time }
+        playerId: { type: string }
+        playerName: { type: string }
+        team: { type: string }
+        opponent: { type: string }
+        market: { $ref: "#/components/schemas/Market" }
+        probability: { type: number, minimum: 0, maximum: 1, description: Model probability that this player scores the first made field goal. }
+        fairOdds: { type: integer, description: American fair price implied by the model probability. It is not a sportsbook quote. }
+        projectedPoints: { type: number, description: Projected points allocated to this player for the game. }
+        usageShare: { type: number, minimum: 0, maximum: 1 }
+        confidence: { type: string, enum: [low, medium, high] }
+        rationale:
+          type: array
+          items: { type: string }
+        result: { type: string, enum: [projected, pending, won, lost] }
+        actualScorer: { type: [string, "null"] }
+        dataStatus: { $ref: "#/components/schemas/DataStatus" }
+      required: [id, gameId, gameDate, tipoff, playerId, playerName, team, opponent, market, probability, fairOdds, projectedPoints, usageShare, confidence, rationale, result, actualScorer, dataStatus]
+    FirstBasketStatus:
+      type: object
+      properties:
+        configured: { type: boolean }
+        provider: { type: string }
+        modelVersion: { type: string }
+        lastUpdated: { type: [string, "null"], format: date-time }
+        message: { type: string }
+        creditsSpent: { type: integer }
+        creditsRemaining: { type: ["integer", "null"] }
+        gamesTracked: { type: integer }
+        playersAnalyzed: { type: integer }
+        entriesGenerated: { type: integer }
+      required: [configured, provider, modelVersion, lastUpdated, message, creditsSpent, creditsRemaining, gamesTracked, playersAnalyzed, entriesGenerated]
+    FirstBasketAlert:
+      type: object
+      properties:
+        id: { type: string }
+        gameId: { type: string }
+        playerId: { type: string }
+        playerName: { type: string }
+        team: { type: string }
+        opponent: { type: string }
+        period: { type: integer }
+        periodLabel: { type: string }
+        clock: { type: string }
+        homeTeam: { type: string }
+        awayTeam: { type: string }
+        homeScore: { type: ["integer", "null"] }
+        awayScore: { type: ["integer", "null"] }
+        createdAt: { type: string, format: date-time }
+      required: [id, gameId, playerId, playerName, team, opponent, period, periodLabel, clock, homeTeam, awayTeam, homeScore, awayScore, createdAt]
+    FirstBasketAlerts:
+      type: object
+      properties:
+        mode: { type: string, enum: [live, final, waiting, unavailable] }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/FirstBasketAlert" }
+        dataStatus: { $ref: "#/components/schemas/DataStatus" }
+      required: [mode, events, dataStatus]
+    DiscordLink:
+      type: object
+      properties:
+        configured: { type: boolean }
+        inviteUrl: { type: [string, "null"] }
+        oauth: { type: boolean }
+        joinUrl: { type: [string, "null"] }
+        guildId: { type: [string, "null"] }
+      required: [configured, inviteUrl, oauth, joinUrl, guildId]
+    ModelRefreshResult:
+      type: object
+      properties:
+        ok: { type: boolean }
+        message: { type: string }
+      required: [ok, message]
 

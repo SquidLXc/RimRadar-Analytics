@@ -18,4 +18,5 @@ export const Market = {
   blocks: 'blocks',
   turnovers: 'turnovers',
   pra: 'pra',
+  first_basket: 'first_basket',
 } as const;

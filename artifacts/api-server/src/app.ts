@@ -1,12 +1,17 @@
 import express, { type Express } from "express";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
+
+// Render terminates TLS in front of the service; trust its proxy header so the
+// Discord OAuth redirect URI and secure cookies use https.
+app.set("trust proxy", 1);
 
 app.use(
   pinoHttp({
@@ -30,6 +35,7 @@ app.use(
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 app.use("/api", router);
 

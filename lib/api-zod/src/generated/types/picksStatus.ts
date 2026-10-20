@@ -15,6 +15,11 @@ export interface PicksStatus {
   message: string;
   /** Estimated DunkAPI credits spent by this server process. */
   creditsSpent: number;
+  /**
+     * Account balance reported by DunkAPI
+     * @nullable
+     */
+  creditsRemaining: number | null;
   slateGames: number;
   playersAnalyzed: number;
   picksGenerated: number;

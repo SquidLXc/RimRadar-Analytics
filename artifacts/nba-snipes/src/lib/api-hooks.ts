@@ -2,12 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AuditRecord,
   DashboardSummary,
+  DiscordLink,
+  FirstBasketAlerts,
+  FirstBasketEntry,
+  FirstBasketStatus,
   DataHealth,
   DataStatus,
   Game,
   LiveAlerts,
   Matchup,
   ModelPerformance,
+  ModelRefreshResult,
   OddsFeed,
   Pick,
   PicksStatus,
@@ -118,6 +123,10 @@ export const getTeamQueryKey = (teamId: string) => key("/api/nba/teams", teamId)
 export const getPropsQueryKey = (params?: { market?: string }) => key("/api/nba/props", params);
 export const getPicksQueryKey = (params?: { market?: string }) => key("/api/nba/picks", params);
 export const getPicksStatusQueryKey = () => key("/api/nba/picks/status");
+export const getFirstBasketQueryKey = () => key("/api/nba/first-basket");
+export const getFirstBasketStatusQueryKey = () => key("/api/nba/first-basket/status");
+export const getFirstBasketAlertsQueryKey = () => key("/api/nba/first-basket/alerts");
+export const getDiscordQueryKey = () => key("/api/community/discord");
 export const getMatchupsQueryKey = () => key("/api/nba/matchups");
 export const getLiveAlertsQueryKey = () => key("/api/nba/live-alerts");
 export const getOddsQueryKey = () => key("/api/nba/odds");
@@ -193,6 +202,22 @@ export function useGetPicksStatus(options?: QueryOptions) {
   return useApiQuery<PicksStatus>("/api/nba/picks/status", options);
 }
 
+export function useGetFirstBasket(options?: QueryOptions) {
+  return useApiQuery<FirstBasketEntry[]>("/api/nba/first-basket", options);
+}
+
+export function useGetFirstBasketStatus(options?: QueryOptions) {
+  return useApiQuery<FirstBasketStatus>("/api/nba/first-basket/status", options);
+}
+
+export function useGetFirstBasketAlerts(options?: QueryOptions) {
+  return useApiQuery<FirstBasketAlerts>("/api/nba/first-basket/alerts", options);
+}
+
+export function useGetDiscord(options?: QueryOptions) {
+  return useApiQuery<DiscordLink>("/api/community/discord", options);
+}
+
 export function useGetMatchups(options?: QueryOptions) {
   return useApiQuery<Matchup[]>("/api/nba/matchups", options);
 }
@@ -236,4 +261,25 @@ export function useSyncNbaData() {
   }, []);
 
   return { sync, isSyncing, result, error };
+}
+
+export function useRefreshNbaModel() {
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [result, setResult] = useState<ModelRefreshResult | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+
+  const refresh = useCallback(async () => {
+    setIsRefreshing(true);
+    setError(null);
+    setResult(null);
+    try {
+      setResult(await request<ModelRefreshResult>("/api/admin/model/refresh", { method: "POST" }));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught : new Error("Model refresh failed"));
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  return { refresh, isRefreshing, result, error };
 }

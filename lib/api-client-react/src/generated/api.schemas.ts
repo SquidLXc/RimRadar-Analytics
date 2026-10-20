@@ -39,6 +39,7 @@ export const Market = {
   blocks: 'blocks',
   turnovers: 'turnovers',
   pra: 'pra',
+  first_basket: 'first_basket',
 } as const;
 
 export type TeamConference = typeof TeamConference[keyof typeof TeamConference];
@@ -260,6 +261,11 @@ export interface PicksStatus {
   message: string;
   /** Estimated DunkAPI credits spent by this server process. */
   creditsSpent: number;
+  /**
+     * Account balance reported by DunkAPI
+     * @nullable
+     */
+  creditsRemaining: number | null;
   slateGames: number;
   playersAnalyzed: number;
   picksGenerated: number;
@@ -380,24 +386,173 @@ export interface SyncResult {
   message: string;
 }
 
+export type AuditRecordConfidence = typeof AuditRecordConfidence[keyof typeof AuditRecordConfidence];
+
+
+export const AuditRecordConfidence = {
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+} as const;
+
 export type AuditRecordStatus = typeof AuditRecordStatus[keyof typeof AuditRecordStatus];
 
 
 export const AuditRecordStatus = {
-  demo: 'demo',
-  verified: 'verified',
+  pending: 'pending',
+  won: 'won',
+  lost: 'lost',
+  push: 'push',
 } as const;
 
 export interface AuditRecord {
   id: string;
+  gameId: string;
+  /** @nullable */
+  playerId: string | null;
   playerName: string;
   team: string;
   market: Market;
+  /** @nullable */
+  line: number | null;
   projection: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  probability: number;
+  /** @nullable */
+  odds: number | null;
+  confidence: AuditRecordConfidence;
+  modelVersion: string;
   dataInputs: string[];
   adjustments: string[];
   recordedAt: string;
   status: AuditRecordStatus;
+  /** @nullable */
+  actual: number | null;
+  /** @nullable */
+  actualScorer: string | null;
+  /** @nullable */
+  settledAt: string | null;
+}
+
+export type FirstBasketEntryConfidence = typeof FirstBasketEntryConfidence[keyof typeof FirstBasketEntryConfidence];
+
+
+export const FirstBasketEntryConfidence = {
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+} as const;
+
+export type FirstBasketEntryResult = typeof FirstBasketEntryResult[keyof typeof FirstBasketEntryResult];
+
+
+export const FirstBasketEntryResult = {
+  projected: 'projected',
+  pending: 'pending',
+  won: 'won',
+  lost: 'lost',
+} as const;
+
+export interface FirstBasketEntry {
+  id: string;
+  gameId: string;
+  gameDate: string;
+  tipoff: string;
+  playerId: string;
+  playerName: string;
+  team: string;
+  opponent: string;
+  market: Market;
+  /**
+     * Model probability that this player scores the first made field goal.
+     * @minimum 0
+     * @maximum 1
+     */
+  probability: number;
+  /** American fair price implied by the model probability. It is not a sportsbook quote. */
+  fairOdds: number;
+  /** Projected points allocated to this player for the game. */
+  projectedPoints: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  usageShare: number;
+  confidence: FirstBasketEntryConfidence;
+  rationale: string[];
+  result: FirstBasketEntryResult;
+  /** @nullable */
+  actualScorer: string | null;
+  dataStatus: DataStatus;
+}
+
+export interface FirstBasketStatus {
+  configured: boolean;
+  provider: string;
+  modelVersion: string;
+  /** @nullable */
+  lastUpdated: string | null;
+  message: string;
+  creditsSpent: number;
+  /** @nullable */
+  creditsRemaining: number | null;
+  gamesTracked: number;
+  playersAnalyzed: number;
+  entriesGenerated: number;
+}
+
+export interface FirstBasketAlert {
+  id: string;
+  gameId: string;
+  playerId: string;
+  playerName: string;
+  team: string;
+  opponent: string;
+  period: number;
+  periodLabel: string;
+  clock: string;
+  homeTeam: string;
+  awayTeam: string;
+  /** @nullable */
+  homeScore: number | null;
+  /** @nullable */
+  awayScore: number | null;
+  createdAt: string;
+}
+
+export type FirstBasketAlertsMode = typeof FirstBasketAlertsMode[keyof typeof FirstBasketAlertsMode];
+
+
+export const FirstBasketAlertsMode = {
+  live: 'live',
+  final: 'final',
+  waiting: 'waiting',
+  unavailable: 'unavailable',
+} as const;
+
+export interface FirstBasketAlerts {
+  mode: FirstBasketAlertsMode;
+  events: FirstBasketAlert[];
+  dataStatus: DataStatus;
+}
+
+export interface DiscordLink {
+  configured: boolean;
+  /** @nullable */
+  inviteUrl: string | null;
+  oauth: boolean;
+  /** @nullable */
+  joinUrl: string | null;
+  /** @nullable */
+  guildId: string | null;
+}
+
+export interface ModelRefreshResult {
+  ok: boolean;
+  message: string;
 }
 
 export type GetNbaDashboardSummaryParams = {

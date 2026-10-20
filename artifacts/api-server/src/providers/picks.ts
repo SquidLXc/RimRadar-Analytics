@@ -1,5 +1,9 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import type { DataStatus, Pick, PicksStatus, Prop } from "@workspace/api-zod";
-import { dunkapi, DunkApiError, type DunkGame, type DunkPlayer, type DunkProp } from "./dunkapi";
+import { dunkapi, DunkApiError, type DunkGame, type DunkProp } from "./dunkapi";
+import { espnAdapter } from "./espn";
+import { espnForm, type PlayerForm } from "./espnForm";
 
 const MODEL_VERSION = "rimraider-v1";
 
@@ -14,16 +18,16 @@ type MarketKey = "points" | "rebounds" | "assists" | "threes";
 type MarketSpec = {
   key: MarketKey;
   label: string;
-  field: "pts" | "reb" | "ast" | "tpm";
+  field: "points" | "rebounds" | "assists" | "threes";
   floor: number;
-  seasonField: "pts" | "reb" | "ast" | null;
+  seasonField: "points" | "rebounds" | "assists" | null;
 };
 
 const MARKETS: Record<string, MarketSpec> = {
-  player_points: { key: "points", label: "points", field: "pts", floor: 3.4, seasonField: "pts" },
-  player_rebounds: { key: "rebounds", label: "rebounds", field: "reb", floor: 2.0, seasonField: "reb" },
-  player_assists: { key: "assists", label: "assists", field: "ast", floor: 1.6, seasonField: "ast" },
-  player_threes: { key: "threes", label: "threes", field: "tpm", floor: 0.8, seasonField: null },
+  player_points: { key: "points", label: "points", field: "points", floor: 3.4, seasonField: "points" },
+  player_rebounds: { key: "rebounds", label: "rebounds", field: "rebounds", floor: 2.0, seasonField: "rebounds" },
+  player_assists: { key: "assists", label: "assists", field: "assists", floor: 1.6, seasonField: "assists" },
+  player_threes: { key: "threes", label: "threes", field: "threes", floor: 0.8, seasonField: null },
 };
 
 type PickCache = {
@@ -33,10 +37,56 @@ type PickCache = {
   error: string | null;
   slateGames: number;
   playersAnalyzed: number;
+  creditsRemaining: number | null;
 };
+
+const CACHE_FILE = path.join(
+  process.env.MODEL_CACHE_DIR ?? path.resolve(process.cwd(), ".data"),
+  "picks-cache.json",
+);
 
 let cache: PickCache | null = null;
 let inflight: Promise<PickCache> | null = null;
+let hydration: Promise<void> | null = null;
+
+function revive(cached: PickCache): PickCache {
+  return {
+    ...cached,
+    picks: cached.picks.map((pick) => ({
+      ...pick,
+      dataStatus: {
+        ...pick.dataStatus,
+        lastUpdated: pick.dataStatus.lastUpdated ? new Date(pick.dataStatus.lastUpdated) : null,
+      },
+    })),
+  };
+}
+
+function hydrate(): Promise<void> {
+  // Concurrent status and board requests must share one hydration attempt.
+  // Otherwise the second request can miss the still-loading cache and start a
+  // paid regeneration.
+  hydration ??= (async () => {
+    try {
+      const parsed = JSON.parse(await readFile(CACHE_FILE, "utf8")) as PickCache;
+      if (Array.isArray(parsed?.picks) && Date.now() - parsed.at < CACHE_MS) {
+        cache = revive(parsed);
+      }
+    } catch {
+      // No cache file yet, or it is unreadable: generate normally.
+    }
+  })();
+  return hydration;
+}
+
+async function persist(value: PickCache): Promise<void> {
+  try {
+    await mkdir(path.dirname(CACHE_FILE), { recursive: true });
+    await writeFile(CACHE_FILE, JSON.stringify(value), "utf8");
+  } catch (error) {
+    console.error("[picks] could not persist cache:", error instanceof Error ? error.message : error);
+  }
+}
 
 function americanToDecimal(odds: number): number {
   return odds > 0 ? odds / 100 + 1 : 100 / Math.abs(odds) + 1;
@@ -120,47 +170,41 @@ function groupLines(props: DunkProp[]): Array<{ prop: DunkProp; spec: MarketSpec
   });
 }
 
-function valuesFor(player: DunkPlayer, spec: MarketSpec): number[] {
-  return player.recent_games
-    .filter((game) => game.minutes !== null && game.minutes > 0)
+function valuesFor(form: PlayerForm, spec: MarketSpec): number[] {
+  return form.recent
+    .filter((game) => game.minutes > 0)
     .slice(0, 10)
     .map((game) => game[spec.field])
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
 }
 
-function latestRegularSeason(player: DunkPlayer) {
-  return player.seasons
-    .filter((season) => season.season_type === "regular")
-    .sort((a, b) => b.season - a.season)[0];
-}
-
-function seasonBaseline(player: DunkPlayer, spec: MarketSpec): number | null {
+function seasonBaseline(form: PlayerForm, spec: MarketSpec): number | null {
   if (!spec.seasonField) return null;
-  const regular = latestRegularSeason(player);
-  if (!regular || regular.games < 3) return null;
-  const value = regular[spec.seasonField];
+  const season = form.season;
+  if (!season || season.games < 3) return null;
+  const value = season[spec.seasonField];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function buildPick(options: {
   group: { prop: DunkProp; spec: MarketSpec };
-  player: DunkPlayer;
+  form: PlayerForm;
   game: DunkGame;
   rank: number;
 }): Pick | null {
-  const { group, player, game, rank } = options;
+  const { group, form, game, rank } = options;
   const { prop, spec } = group;
-  const values = valuesFor(player, spec);
+  const values = valuesFor(form, spec);
   if (values.length < 3) return null;
 
   const recent = recencyWeightedMean(values);
-  const baseline = seasonBaseline(player, spec);
+  const baseline = seasonBaseline(form, spec);
   const projection = baseline !== null ? recent * 0.72 + baseline * 0.28 : recent;
 
   // Small season samples (injury returns, trades, rookies) mean the baseline
   // and spread are less trustworthy, so widen the distribution and demand a
   // larger edge before surfacing the pick.
-  const seasonGames = latestRegularSeason(player)?.games ?? 0;
+  const seasonGames = form.season?.games ?? 0;
   const sampleWidth = seasonGames >= 40 ? 1 : seasonGames >= 20 ? 1.1 : 1.25;
   const requiredEdge = seasonGames >= 20 ? MIN_EDGE : Math.max(MIN_EDGE, 0.06);
 
@@ -182,7 +226,8 @@ function buildPick(options: {
           ? "medium"
           : "low";
 
-  const isHome = player.player.team === game.home.abbrev;
+  const isHome = form.team === game.home.abbrev;
+  const team = isHome ? game.home.abbrev : game.away.abbrev;
   const opponent = isHome ? game.away.abbrev : game.home.abbrev;
   const book = dunkapi.bookTitle(prop.bookmaker);
   const status: DataStatus = {
@@ -205,8 +250,8 @@ function buildPick(options: {
   return {
     id: `${prop.game_id}-${prop.player_id}-${spec.key}`,
     playerId: String(prop.player_id),
-    playerName: prop.player_name || player.player.name,
-    team: isHome ? game.home.abbrev : game.away.abbrev,
+    playerName: prop.player_name || form.name,
+    team,
     opponent,
     market: spec.key,
     line: prop.line,
@@ -238,6 +283,7 @@ function buildStatus(cacheValue: PickCache | null, error: string | null): PicksS
         ? "Picks have not been generated yet."
         : "DUNKAPI_API_KEY is not configured. Radar Picks is empty."),
     creditsSpent: dunk.creditsSpent,
+    creditsRemaining: dunk.creditsRemaining ?? cacheValue?.creditsRemaining ?? null,
     slateGames: cacheValue?.slateGames ?? 0,
     playersAnalyzed: cacheValue?.playersAnalyzed ?? 0,
     picksGenerated: cacheValue?.picks.length ?? 0,
@@ -253,6 +299,7 @@ async function generate(): Promise<PickCache> {
     error,
     slateGames: games,
     playersAnalyzed: 0,
+    creditsRemaining: dunkapi.status().creditsRemaining,
   });
 
   if (!dunkapi.isConfigured()) {
@@ -270,11 +317,16 @@ async function generate(): Promise<PickCache> {
       return blank("No upcoming games were returned by DunkAPI.", null);
     }
 
-    const injuries = await dunkapi.fetchInjuries();
+    // ESPN's injury feed is free and indexed by the same athlete IDs the props
+    // use, so it avoids another paid DunkAPI call.
+    const injuries = await espnAdapter.fetchInjuries().catch((error): Array<{ athleteId: string; status: string }> => {
+      console.error("[picks] ESPN injuries unavailable", error instanceof Error ? error.message : error);
+      return [];
+    });
     const unavailable = new Set(
       injuries
         .filter((injury) => /out|suspended|ineligible/i.test(injury.status))
-        .map((injury) => `${injury.player_id}:${injury.name.toLowerCase()}`),
+        .map((injury) => injury.athleteId),
     );
 
     const propsByGame: Array<{ game: DunkGame; props: DunkProp[] }> = [];
@@ -295,8 +347,7 @@ async function generate(): Promise<PickCache> {
     propsByGame.forEach(({ game, props }) => {
       props.forEach((prop) => {
         if (!prop.player_id || !MARKETS[prop.market]) return;
-        const key = `${prop.player_id}:${prop.player_name.toLowerCase()}`;
-        if (unavailable.has(key)) return;
+        if (unavailable.has(prop.player_id)) return;
         const existing = candidates.get(prop.player_id!) ?? {
           name: prop.player_name,
           game,
@@ -314,7 +365,11 @@ async function generate(): Promise<PickCache> {
       .slice(0, MAX_PLAYERS);
 
     const profiles = await Promise.allSettled(
-      selected.map(async ([playerId]) => ({ playerId, profile: await dunkapi.fetchPlayer(playerId) })),
+      selected.map(async ([playerId, candidate]) => ({
+        playerId,
+        expectedName: candidate.name,
+        form: await espnForm.fetch(playerId),
+      })),
     );
 
     const groups = new Map<string, { game: DunkGame; lines: Array<{ prop: DunkProp; spec: MarketSpec }> }>();
@@ -334,13 +389,14 @@ async function generate(): Promise<PickCache> {
         console.error("[picks] player profile failed", result.reason instanceof Error ? result.reason.message : result.reason);
         return;
       }
-      const { playerId, profile } = result.value;
+      const { playerId, form } = result.value;
       const entry = groups.get(playerId);
-      if (!entry || !profile?.player) return;
+      if (!entry || !form) return;
+      if (form.team !== entry.game.home.abbrev && form.team !== entry.game.away.abbrev) return;
       playersAnalyzed += 1;
 
       entry.lines.forEach((line) => {
-        const pick = buildPick({ group: line, player: profile, game: entry.game, rank: picks.length + 1 });
+        const pick = buildPick({ group: line, form, game: entry.game, rank: picks.length + 1 });
         if (pick) picks.push(pick);
       });
     });
@@ -362,6 +418,7 @@ async function generate(): Promise<PickCache> {
       error: null,
       slateGames: games.length,
       playersAnalyzed,
+      creditsRemaining: dunkapi.status().creditsRemaining,
     };
   } catch (error) {
     const reason = error instanceof DunkApiError ? error.message : error instanceof Error ? error.message : "DunkAPI failed";
@@ -374,6 +431,7 @@ async function generate(): Promise<PickCache> {
 }
 
 async function ensurePicks(): Promise<PickCache> {
+  await hydrate();
   if (cache && Date.now() - cache.at < CACHE_MS) return cache;
   if (inflight) return inflight;
 
@@ -385,6 +443,7 @@ async function ensurePicks(): Promise<PickCache> {
         return cache;
       }
       cache = next;
+      if (next.picks.length > 0) void persist(next);
       return cache;
     })
     .finally(() => {

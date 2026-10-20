@@ -24,6 +24,10 @@ import type {
   DashboardSummary,
   DataHealth,
   DataStatus,
+  DiscordLink,
+  FirstBasketAlerts,
+  FirstBasketEntry,
+  FirstBasketStatus,
   Game,
   GetNbaDashboardSummaryParams,
   GetNbaGamesParams,
@@ -34,6 +38,7 @@ import type {
   LiveAlerts,
   Matchup,
   ModelPerformance,
+  ModelRefreshResult,
   OddsFeed,
   Pick,
   PicksStatus,
@@ -1186,6 +1191,237 @@ export function useGetNbaPicksStatus<TData = Awaited<ReturnType<typeof getNbaPic
 
 
 
+export const getGetNbaFirstBasketUrl = () => {
+
+
+
+
+  return `/api/nba/first-basket`
+}
+
+/**
+ * @summary List model probabilities for the first made basket of each game
+ */
+export const getNbaFirstBasket = async ( options?: Parameters<typeof customFetch>[1]): Promise<FirstBasketEntry[]> => {
+
+  return customFetch<FirstBasketEntry[]>(getGetNbaFirstBasketUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetNbaFirstBasketQueryKey = () => {
+    return [
+    `/api/nba/first-basket`
+    ] as const;
+    }
+
+
+export const getGetNbaFirstBasketQueryOptions = <TData = Awaited<ReturnType<typeof getNbaFirstBasket>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNbaFirstBasket>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetNbaFirstBasketQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getNbaFirstBasket>>> = ({ signal }) => getNbaFirstBasket({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getNbaFirstBasket>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetNbaFirstBasketQueryResult = NonNullable<Awaited<ReturnType<typeof getNbaFirstBasket>>>
+export type GetNbaFirstBasketQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List model probabilities for the first made basket of each game
+ */
+
+export function useGetNbaFirstBasket<TData = Awaited<ReturnType<typeof getNbaFirstBasket>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNbaFirstBasket>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetNbaFirstBasketQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetNbaFirstBasketStatusUrl = () => {
+
+
+
+
+  return `/api/nba/first-basket/status`
+}
+
+/**
+ * @summary Get first-basket model and provider status
+ */
+export const getNbaFirstBasketStatus = async ( options?: Parameters<typeof customFetch>[1]): Promise<FirstBasketStatus> => {
+
+  return customFetch<FirstBasketStatus>(getGetNbaFirstBasketStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetNbaFirstBasketStatusQueryKey = () => {
+    return [
+    `/api/nba/first-basket/status`
+    ] as const;
+    }
+
+
+export const getGetNbaFirstBasketStatusQueryOptions = <TData = Awaited<ReturnType<typeof getNbaFirstBasketStatus>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNbaFirstBasketStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetNbaFirstBasketStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getNbaFirstBasketStatus>>> = ({ signal }) => getNbaFirstBasketStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getNbaFirstBasketStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetNbaFirstBasketStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getNbaFirstBasketStatus>>>
+export type GetNbaFirstBasketStatusQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get first-basket model and provider status
+ */
+
+export function useGetNbaFirstBasketStatus<TData = Awaited<ReturnType<typeof getNbaFirstBasketStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNbaFirstBasketStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetNbaFirstBasketStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetNbaFirstBasketAlertsUrl = () => {
+
+
+
+
+  return `/api/nba/first-basket/alerts`
+}
+
+/**
+ * @summary Get confirmed first-basket events from today's ESPN games
+ */
+export const getNbaFirstBasketAlerts = async ( options?: Parameters<typeof customFetch>[1]): Promise<FirstBasketAlerts> => {
+
+  return customFetch<FirstBasketAlerts>(getGetNbaFirstBasketAlertsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetNbaFirstBasketAlertsQueryKey = () => {
+    return [
+    `/api/nba/first-basket/alerts`
+    ] as const;
+    }
+
+
+export const getGetNbaFirstBasketAlertsQueryOptions = <TData = Awaited<ReturnType<typeof getNbaFirstBasketAlerts>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNbaFirstBasketAlerts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetNbaFirstBasketAlertsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getNbaFirstBasketAlerts>>> = ({ signal }) => getNbaFirstBasketAlerts({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getNbaFirstBasketAlerts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetNbaFirstBasketAlertsQueryResult = NonNullable<Awaited<ReturnType<typeof getNbaFirstBasketAlerts>>>
+export type GetNbaFirstBasketAlertsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get confirmed first-basket events from today's ESPN games
+ */
+
+export function useGetNbaFirstBasketAlerts<TData = Awaited<ReturnType<typeof getNbaFirstBasketAlerts>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNbaFirstBasketAlerts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetNbaFirstBasketAlertsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetNbaMatchupsUrl = () => {
 
 
@@ -1721,4 +1957,155 @@ export const useSyncNbaData = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getSyncNbaDataMutationOptions(options));
     }
+
+export const getRefreshNbaModelUrl = () => {
+
+
+
+
+  return `/api/admin/model/refresh`
+}
+
+/**
+ * @summary Clear the picks and first-basket model caches
+ */
+export const refreshNbaModel = async ( options?: Parameters<typeof customFetch>[1]): Promise<ModelRefreshResult> => {
+
+  return customFetch<ModelRefreshResult>(getRefreshNbaModelUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRefreshNbaModelMutationKey = () => ['refreshNbaModel'] as const;
+
+export const getRefreshNbaModelMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshNbaModel>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof refreshNbaModel>>, TError,void, TContext> => {
+
+const mutationKey = getRefreshNbaModelMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof refreshNbaModel>>, void> = () => {
+
+
+          return  refreshNbaModel(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RefreshNbaModelMutationResult = NonNullable<Awaited<ReturnType<typeof refreshNbaModel>>>
+
+    export type RefreshNbaModelMutationError = ErrorType<unknown>
+
+
+    /**
+ * @summary Clear the picks and first-basket model caches
+ */
+export const useRefreshNbaModel = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshNbaModel>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof refreshNbaModel>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRefreshNbaModelMutationOptions(options));
+    }
+
+export const getGetDiscordLinkUrl = () => {
+
+
+
+
+  return `/api/community/discord`
+}
+
+/**
+ * @summary Get the configured Discord invite or OAuth join link
+ */
+export const getDiscordLink = async ( options?: Parameters<typeof customFetch>[1]): Promise<DiscordLink> => {
+
+  return customFetch<DiscordLink>(getGetDiscordLinkUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDiscordLinkQueryKey = () => {
+    return [
+    `/api/community/discord`
+    ] as const;
+    }
+
+
+export const getGetDiscordLinkQueryOptions = <TData = Awaited<ReturnType<typeof getDiscordLink>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDiscordLink>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDiscordLinkQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDiscordLink>>> = ({ signal }) => getDiscordLink({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDiscordLink>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDiscordLinkQueryResult = NonNullable<Awaited<ReturnType<typeof getDiscordLink>>>
+export type GetDiscordLinkQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the configured Discord invite or OAuth join link
+ */
+
+export function useGetDiscordLink<TData = Awaited<ReturnType<typeof getDiscordLink>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDiscordLink>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDiscordLinkQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 

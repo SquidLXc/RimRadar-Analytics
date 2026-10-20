@@ -5,17 +5,38 @@
  * Rim Radar NBA basketball analytics API
  * OpenAPI spec version: 0.1.0
  */
+import type { AuditRecordConfidence } from './auditRecordConfidence';
 import type { AuditRecordStatus } from './auditRecordStatus';
 import type { Market } from './market';
 
 export interface AuditRecord {
   id: string;
+  gameId: string;
+  /** @nullable */
+  playerId: string | null;
   playerName: string;
   team: string;
   market: Market;
+  /** @nullable */
+  line: number | null;
   projection: number;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  probability: number;
+  /** @nullable */
+  odds: number | null;
+  confidence: AuditRecordConfidence;
+  modelVersion: string;
   dataInputs: string[];
   adjustments: string[];
   recordedAt: Date;
   status: AuditRecordStatus;
+  /** @nullable */
+  actual: number | null;
+  /** @nullable */
+  actualScorer: string | null;
+  /** @nullable */
+  settledAt: Date | null;
 }

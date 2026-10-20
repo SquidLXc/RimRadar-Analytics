@@ -58,7 +58,7 @@ export const GetNbaDashboardSummaryResponse = zod.object({
   "playerName": zod.string(),
   "team": zod.string(),
   "opponent": zod.string(),
-  "market": zod.enum(['points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra']),
+  "market": zod.enum(['points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra', 'first_basket']),
   "line": zod.number().nullable(),
   "projection": zod.number(),
   "overProbability": zod.number().min(getNbaDashboardSummaryResponseTopEdgesItemOneOverProbabilityMin).max(getNbaDashboardSummaryResponseTopEdgesItemOneOverProbabilityMax).describe('Probability of the over side from 0 to 1.'),
@@ -111,7 +111,7 @@ export const GetNbaDashboardSummaryResponse = zod.object({
 })),
   "modelVersion": zod.string().describe('Reporting mode of the current build. Not a model claim when no model is connected.'),
   "marketPerformance": zod.array(zod.object({
-  "market": zod.enum(['points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra']),
+  "market": zod.enum(['points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra', 'first_basket']),
   "sampleSize": zod.number().int(),
   "hitRate": zod.number().min(getNbaDashboardSummaryResponseMarketPerformanceItemHitRateMin).max(getNbaDashboardSummaryResponseMarketPerformanceItemHitRateMax).nullable().describe('Historical hit rate from 0 to 1.'),
   "averageError": zod.number().nullable(),
@@ -457,7 +457,7 @@ export const GetNbaTeamResponse = zod.object({
  * @summary List NBA player props
  */
 export const GetNbaPropsQueryParams = zod.object({
-  "market": zod.enum(['points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra']).optional()
+  "market": zod.enum(['points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra', 'first_basket']).optional()
 })
 
 export const getNbaPropsResponseOverProbabilityMin = 0;
@@ -471,7 +471,7 @@ export const GetNbaPropsResponseItem = zod.object({
   "playerName": zod.string(),
   "team": zod.string(),
   "opponent": zod.string(),
-  "market": zod.enum(['points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra']),
+  "market": zod.enum(['points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra', 'first_basket']),
   "line": zod.number().nullable(),
   "projection": zod.number(),
   "overProbability": zod.number().min(getNbaPropsResponseOverProbabilityMin).max(getNbaPropsResponseOverProbabilityMax).describe('Probability of the over side from 0 to 1.'),
@@ -495,7 +495,7 @@ export const GetNbaPropsResponse = zod.array(GetNbaPropsResponseItem)
  * @summary List ranked player-prop edges
  */
 export const GetNbaPicksQueryParams = zod.object({
-  "market": zod.enum(['points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra']).optional()
+  "market": zod.enum(['points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra', 'first_basket']).optional()
 })
 
 export const getNbaPicksResponseOneOverProbabilityMin = 0;
@@ -509,7 +509,7 @@ export const GetNbaPicksResponseItem = zod.object({
   "playerName": zod.string(),
   "team": zod.string(),
   "opponent": zod.string(),
-  "market": zod.enum(['points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra']),
+  "market": zod.enum(['points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra', 'first_basket']),
   "line": zod.number().nullable(),
   "projection": zod.number(),
   "overProbability": zod.number().min(getNbaPicksResponseOneOverProbabilityMin).max(getNbaPicksResponseOneOverProbabilityMax).describe('Probability of the over side from 0 to 1.'),
@@ -542,9 +542,96 @@ export const GetNbaPicksStatusResponse = zod.object({
   "lastUpdated": zod.coerce.date().nullable(),
   "message": zod.string(),
   "creditsSpent": zod.number().int().describe('Estimated DunkAPI credits spent by this server process.'),
+  "creditsRemaining": zod.number().int().nullable().describe('Account balance reported by DunkAPI'),
   "slateGames": zod.number().int(),
   "playersAnalyzed": zod.number().int(),
   "picksGenerated": zod.number().int()
+})
+
+
+/**
+ * @summary List model probabilities for the first made basket of each game
+ */
+export const getNbaFirstBasketResponseProbabilityMin = 0;
+export const getNbaFirstBasketResponseProbabilityMax = 1;
+
+export const getNbaFirstBasketResponseUsageShareMin = 0;
+export const getNbaFirstBasketResponseUsageShareMax = 1;
+
+
+
+export const GetNbaFirstBasketResponseItem = zod.object({
+  "id": zod.string(),
+  "gameId": zod.string(),
+  "gameDate": zod.coerce.date(),
+  "tipoff": zod.coerce.date(),
+  "playerId": zod.string(),
+  "playerName": zod.string(),
+  "team": zod.string(),
+  "opponent": zod.string(),
+  "market": zod.enum(['points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra', 'first_basket']),
+  "probability": zod.number().min(getNbaFirstBasketResponseProbabilityMin).max(getNbaFirstBasketResponseProbabilityMax).describe('Model probability that this player scores the first made field goal.'),
+  "fairOdds": zod.number().int().describe('American fair price implied by the model probability. It is not a sportsbook quote.'),
+  "projectedPoints": zod.number().describe('Projected points allocated to this player for the game.'),
+  "usageShare": zod.number().min(getNbaFirstBasketResponseUsageShareMin).max(getNbaFirstBasketResponseUsageShareMax),
+  "confidence": zod.enum(['low', 'medium', 'high']),
+  "rationale": zod.array(zod.string()),
+  "result": zod.enum(['projected', 'pending', 'won', 'lost']),
+  "actualScorer": zod.string().nullable(),
+  "dataStatus": zod.object({
+  "mode": zod.enum(['demo', 'live', 'stale', 'unavailable']),
+  "provider": zod.string(),
+  "lastUpdated": zod.coerce.date().nullable(),
+  "message": zod.string()
+})
+})
+export const GetNbaFirstBasketResponse = zod.array(GetNbaFirstBasketResponseItem)
+
+
+/**
+ * @summary Get first-basket model and provider status
+ */
+export const GetNbaFirstBasketStatusResponse = zod.object({
+  "configured": zod.boolean(),
+  "provider": zod.string(),
+  "modelVersion": zod.string(),
+  "lastUpdated": zod.coerce.date().nullable(),
+  "message": zod.string(),
+  "creditsSpent": zod.number().int(),
+  "creditsRemaining": zod.number().int().nullable(),
+  "gamesTracked": zod.number().int(),
+  "playersAnalyzed": zod.number().int(),
+  "entriesGenerated": zod.number().int()
+})
+
+
+/**
+ * @summary Get confirmed first-basket events from today's ESPN games
+ */
+export const GetNbaFirstBasketAlertsResponse = zod.object({
+  "mode": zod.enum(['live', 'final', 'waiting', 'unavailable']),
+  "events": zod.array(zod.object({
+  "id": zod.string(),
+  "gameId": zod.string(),
+  "playerId": zod.string(),
+  "playerName": zod.string(),
+  "team": zod.string(),
+  "opponent": zod.string(),
+  "period": zod.number().int(),
+  "periodLabel": zod.string(),
+  "clock": zod.string(),
+  "homeTeam": zod.string(),
+  "awayTeam": zod.string(),
+  "homeScore": zod.number().int().nullable(),
+  "awayScore": zod.number().int().nullable(),
+  "createdAt": zod.coerce.date()
+})),
+  "dataStatus": zod.object({
+  "mode": zod.enum(['demo', 'live', 'stale', 'unavailable']),
+  "provider": zod.string(),
+  "lastUpdated": zod.coerce.date().nullable(),
+  "message": zod.string()
+})
 })
 
 
@@ -629,7 +716,7 @@ export const getNbaModelPerformanceResponseHitRateMax = 1;
 
 
 export const GetNbaModelPerformanceResponseItem = zod.object({
-  "market": zod.enum(['points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra']),
+  "market": zod.enum(['points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra', 'first_basket']),
   "sampleSize": zod.number().int(),
   "hitRate": zod.number().min(getNbaModelPerformanceResponseHitRateMin).max(getNbaModelPerformanceResponseHitRateMax).nullable().describe('Historical hit rate from 0 to 1.'),
   "averageError": zod.number().nullable(),
@@ -642,16 +729,31 @@ export const GetNbaModelPerformanceResponse = zod.array(GetNbaModelPerformanceRe
 /**
  * @summary Get model reasoning and data audit records
  */
+export const getNbaAuditResponseProbabilityMin = 0;
+export const getNbaAuditResponseProbabilityMax = 1;
+
+
+
 export const GetNbaAuditResponseItem = zod.object({
   "id": zod.string(),
+  "gameId": zod.string(),
+  "playerId": zod.string().nullable(),
   "playerName": zod.string(),
   "team": zod.string(),
-  "market": zod.enum(['points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra']),
+  "market": zod.enum(['points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra', 'first_basket']),
+  "line": zod.number().nullable(),
   "projection": zod.number(),
+  "probability": zod.number().min(getNbaAuditResponseProbabilityMin).max(getNbaAuditResponseProbabilityMax),
+  "odds": zod.number().int().nullable(),
+  "confidence": zod.enum(['low', 'medium', 'high']),
+  "modelVersion": zod.string(),
   "dataInputs": zod.array(zod.string()),
   "adjustments": zod.array(zod.string()),
   "recordedAt": zod.coerce.date(),
-  "status": zod.enum(['demo', 'verified'])
+  "status": zod.enum(['pending', 'won', 'lost', 'push']),
+  "actual": zod.number().nullable(),
+  "actualScorer": zod.string().nullable(),
+  "settledAt": zod.coerce.date().nullable()
 })
 export const GetNbaAuditResponse = zod.array(GetNbaAuditResponseItem)
 
@@ -737,6 +839,27 @@ export const SyncNbaDataResponse = zod.object({
   "gamesImported": zod.number().int(),
   "playersImported": zod.number().int(),
   "message": zod.string()
+})
+
+
+/**
+ * @summary Clear the picks and first-basket model caches
+ */
+export const RefreshNbaModelResponse = zod.object({
+  "ok": zod.boolean(),
+  "message": zod.string()
+})
+
+
+/**
+ * @summary Get the configured Discord invite or OAuth join link
+ */
+export const GetDiscordLinkResponse = zod.object({
+  "configured": zod.boolean(),
+  "inviteUrl": zod.string().nullable(),
+  "oauth": zod.boolean(),
+  "joinUrl": zod.string().nullable(),
+  "guildId": zod.string().nullable()
 })
 
 
