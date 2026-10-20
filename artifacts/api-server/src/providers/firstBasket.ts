@@ -1,12 +1,53 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { DataStatus, FirstBasketEntry, FirstBasketStatus } from "@workspace/api-zod";
+import type { DataStatus, FirstBasketAlert, FirstBasketEntry, FirstBasketStatus, Game } from "@workspace/api-zod";
 import { dunkapi, type DunkGame, type DunkProp } from "./dunkapi";
 import { espnAdapter } from "./espn";
 import { espnForm, type PlayerForm } from "./espnForm";
 import { resultsProvider } from "./results";
 
 const MODEL_VERSION = "rimraider-first-basket-v1";
+
+/**
+ * Turn the first made field goal of a game into the dashboard alert. Kept pure so
+ * the live feed can be checked against real play-by-play without the HTTP layer.
+ */
+export function toFirstBasketAlert(
+  game: Game,
+  first: {
+    playerId: string;
+    playerName: string;
+    team: string;
+    period: number;
+    periodLabel: string;
+    clock: string;
+    homeScore: number | null;
+    awayScore: number | null;
+  },
+): FirstBasketAlert {
+  const [minutes, seconds] = first.clock.split(":").map((part) => Number(part));
+  const remaining = Number.isFinite(minutes) && Number.isFinite(seconds) ? minutes * 60 + seconds : 0;
+  const elapsed = Math.max(0, (first.period - 1) * 720 + (720 - remaining));
+  const team = first.team || game.homeTeam.abbreviation;
+  const isHome = team === game.homeTeam.abbreviation;
+
+  return {
+    id: `${game.id}-first-basket`,
+    gameId: game.id,
+    playerId: first.playerId,
+    playerName: first.playerName,
+    team,
+    opponent: isHome ? game.awayTeam.abbreviation : game.homeTeam.abbreviation,
+    period: first.period,
+    periodLabel: first.periodLabel,
+    clock: first.clock,
+    homeTeam: game.homeTeam.abbreviation,
+    awayTeam: game.awayTeam.abbreviation,
+    homeScore: first.homeScore ?? game.homeScore,
+    awayScore: first.awayScore ?? game.awayScore,
+    createdAt: new Date(new Date(game.tipoff).getTime() + elapsed * 1000),
+  };
+}
 
 const CACHE_MS = Math.max(15, Number(process.env.FIRST_BASKET_CACHE_MINUTES ?? 360)) * 60_000;
 const MAX_GAMES = Math.max(1, Math.min(4, Number(process.env.FIRST_BASKET_MAX_GAMES ?? 2)));

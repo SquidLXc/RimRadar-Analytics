@@ -21,18 +21,21 @@ import type {
 } from "@workspace/api-zod";
 import { espnAdapter, leagueDate, type TeamRecord } from "./espn";
 import { picksProvider } from "./picks";
-import { firstBasketProvider } from "./firstBasket";
+import { firstBasketProvider, toFirstBasketAlert } from "./firstBasket";
 import { auditProvider } from "./audit";
 import { dunkapi } from "./dunkapi";
 import { resultsProvider } from "./results";
 
 const GAME_CACHE_TTL = 5 * 60 * 1000;
 const STATIC_CACHE_TTL = 60 * 60 * 1000;
+// The live first-basket feed polls every 15s, so it cannot ride the 5 minute scoreboard cache.
+const ALERTS_GAMES_TTL = 30 * 1000;
 
 type Cache<T> = { value: T; at: number };
 
 let gamesCache: Cache<Game[]> | null = null;
 let todayCache: (Cache<Game[]> & { key: string }) | null = null;
+let alertsGamesCache: (Cache<Game[]> & { key: string }) | null = null;
 let teamsCache: Cache<Team[]> | null = null;
 let playersCache: Cache<Player[]> | null = null;
 let recordsCache: Cache<Map<string, TeamRecord>> | null = null;
@@ -114,6 +117,26 @@ async function loadTodayGames(): Promise<Game[]> {
   } catch (error) {
     recordFailure(error);
     return todayCache?.value ?? gamesCache?.value ?? [];
+  }
+}
+
+async function loadTodayGamesForAlerts(): Promise<Game[]> {
+  const key = leagueDate();
+  if (alertsGamesCache && alertsGamesCache.key === key && isFresh(alertsGamesCache, ALERTS_GAMES_TTL)) {
+    return alertsGamesCache.value;
+  }
+
+  try {
+    const games = await espnAdapter.fetchGames(new Date());
+    recordSuccess();
+    const at = Date.now();
+    alertsGamesCache = { value: games, key, at };
+    todayCache = { value: games, key, at };
+    gamesCache = { value: games, at };
+    return games;
+  } catch (error) {
+    recordFailure(error);
+    return alertsGamesCache?.value ?? todayCache?.value ?? gamesCache?.value ?? [];
   }
 }
 
@@ -393,7 +416,7 @@ export const nbaProvider = {
   getFirstBasketStatus: () => firstBasketProvider.getStatus(),
 
   getFirstBasketAlerts: async (): Promise<FirstBasketAlerts> => {
-    const games = await loadTodayGames();
+    const games = await loadTodayGamesForAlerts();
     const started = games.filter((game) => game.status === "live" || game.status === "final");
     if (started.length === 0) {
       return { mode: "waiting", events: [], dataStatus: buildStatus() };
@@ -405,28 +428,7 @@ export const nbaProvider = {
       const first = result?.firstBasket;
       if (!first) continue;
 
-      const [minutes, seconds] = first.clock.split(":").map((part) => Number(part));
-      const remaining = Number.isFinite(minutes) && Number.isFinite(seconds) ? minutes * 60 + seconds : 0;
-      const elapsed = Math.max(0, (first.period - 1) * 720 + (720 - remaining));
-      const team = first.team || game.homeTeam.abbreviation;
-      const isHome = team === game.homeTeam.abbreviation;
-
-      events.push({
-        id: `${game.id}-first-basket`,
-        gameId: game.id,
-        playerId: first.playerId,
-        playerName: first.playerName,
-        team,
-        opponent: isHome ? game.awayTeam.abbreviation : game.homeTeam.abbreviation,
-        period: first.period,
-        periodLabel: first.periodLabel,
-        clock: first.clock,
-        homeTeam: game.homeTeam.abbreviation,
-        awayTeam: game.awayTeam.abbreviation,
-        homeScore: first.homeScore ?? game.homeScore,
-        awayScore: first.awayScore ?? game.awayScore,
-        createdAt: new Date(new Date(game.tipoff).getTime() + elapsed * 1000),
-      });
+      events.push(toFirstBasketAlert(game, first));
     }
 
     events.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
