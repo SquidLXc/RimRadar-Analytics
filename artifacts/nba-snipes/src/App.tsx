@@ -1,345 +1,1814 @@
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ErrorBoundary } from '@/components/error-boundary';
-import { Toaster } from '@/components/ui/toaster';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import NotFound from '@/pages/not-found';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
 import {
-  Activity, ArrowRight, ArrowUpRight, BarChart3, Bookmark,
-  Check, ChevronDown, CircleHelp, Clock3, Crosshair, Database, Filter,
-  Gauge, LayoutDashboard, Menu, Search, ShieldAlert, ShieldCheck,
-  SlidersHorizontal, Sparkles, Trophy, Users, X,
+  Activity, ArrowUpRight, BarChart3, Bell, BrainCircuit, CalendarDays, ChevronRight,
+  CircleAlert, Clock3, Database, ExternalLink, Gauge, Heart, Info, Menu, RefreshCw,
+  Search, Shield, Sparkles, Star, Target, TrendingUp, Trophy, Users, X, Zap, Instagram,
 } from 'lucide-react';
-import { Link, Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 import {
-  getGetNbaGameQueryKey, getGetNbaPlayerQueryKey, getGetNbaTeamQueryKey,
-  useGetNbaAudit, useGetNbaDataStatus, useGetNbaDashboardSummary,
-  useGetNbaGame, useGetNbaGames, useGetNbaLiveAlerts, useGetNbaMatchups,
-  useGetNbaModelPerformance, useGetNbaPlayer, useGetNbaPlayers, useGetNbaProps,
-  useGetNbaSnipes, useGetNbaTeam, useGetNbaTeams, useHealthCheck,
+  getAuditQueryKey, getDashboardSummaryQueryKey, getDataHealthQueryKey, getFutureGamesQueryKey,
+  getGameQueryKey, getLiveAlertsQueryKey, getMatchupsQueryKey, getModelPerformanceQueryKey,
+  getOddsQueryKey, getPicksQueryKey, getPicksStatusQueryKey, getPlayerQueryKey, getPlayersQueryKey, getPropsQueryKey,
+  getTeamQueryKey, getTeamsQueryKey, getTodayGamesQueryKey, useDashboardSummary, useDataHealth,
+  useGetAudit, useGetFutureGames, useGetGame, useGetLiveAlerts, useGetMatchups,
+  useGetModelPerformance, useGetOdds, useGetPicks, useGetPicksStatus, useGetPlayer, useGetPlayers, useGetProps,
+  useGetTeam, useGetTeams, useGetTodayGames, useHealthCheck, useSyncNbaData,
+} from '@/lib/api-hooks';
+import type {
+  AuditRecord, DataStatus, DashboardSummary, Game, LiveAlert, Matchup,
+  ModelPerformance, OddsFeed, Pick, PicksStatus, Player, PlayerDetail, Prop, Team, TeamDetail,
 } from '@workspace/api-client-react';
+import { PlayerImage, TeamCrest } from '@/components/assets';
+import { ErrorBoundary } from '@/components/error-boundary';
+import NotFound from '@/pages/not-found';
+import '@/index.css';
 
-const queryClient = new QueryClient();
-type Market = 'all' | 'points' | 'rebounds' | 'assists' | 'threes' | 'steals' | 'blocks' | 'turnovers' | 'pra';
-const marketNames: Record<string, string> = {
-  points: 'Points', rebounds: 'Rebounds', assists: 'Assists', threes: '3-pointers',
-  steals: 'Steals', blocks: 'Blocks', turnovers: 'Turnovers', pra: 'PRA',
-};
-const markets: Market[] = ['all', 'points', 'rebounds', 'assists', 'threes', 'steals', 'blocks', 'turnovers', 'pra'];
-const navGroups = [
-  { label: 'COURT SIDE', items: [{ href: '/', title: 'Slate overview', icon: LayoutDashboard }, { href: '/snipes', title: 'Top signals', icon: Crosshair }, { href: '/props', title: 'Prop board', icon: BarChart3 }, { href: '/matchups', title: 'Matchups', icon: Activity }] },
-  { label: 'THE LEAGUE', items: [{ href: '/players', title: 'Players', icon: Users }, { href: '/teams', title: 'Teams', icon: ShieldCheck }] },
-  { label: 'MY WORKSPACE', items: [{ href: '/slip-builder', title: 'Slip builder', icon: SlidersHorizontal }, { href: '/watchlist', title: 'Watchlist', icon: Bookmark }] },
-  { label: 'MODEL ROOM', items: [{ href: '/audit', title: 'Model audit', icon: Database }, { href: '/performance', title: 'Performance', icon: Gauge }] },
+const markets = ['all', 'points', 'assists', 'rebounds', 'threes'] as const;
+type Market = (typeof markets)[number];
+
+const nav = [
+  { href: '/', label: 'Overview', icon: Gauge },
+  { href: '/picks', label: 'Radar Picks', icon: Target, hot: true },
+  { href: '/props', label: 'Prop board', icon: BarChart3 },
+  { href: '/matchups', label: 'Matchups', icon: Trophy },
+  { href: '/players', label: 'Players', icon: Users },
+  { href: '/teams', label: 'Teams', icon: Activity },
+  { href: '/watchlist', label: 'Watchlist', icon: Star },
+  { href: '/audit', label: 'Audit trail', icon: BrainCircuit },
 ];
 
-function AppShell() {
-  const [path] = useLocation();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const dataStatus = useGetNbaDataStatus();
-  const feedMode = dataStatus.data?.mode ?? 'unavailable';
-  const feedLabel = feedMode === 'live' ? 'LIVE DATA' : feedMode === 'stale' ? 'STALE DATA' : 'SOURCE OFFLINE';
-  const title = navGroups.flatMap((g) => g.items).find((i) => i.href === path)?.title ??
-    (path.startsWith('/players/') ? 'Player profile' : path.startsWith('/teams/') ? 'Team profile' : 'NBA Snipes');
-  return <div className="app-shell">
-    <aside className={`sidebar ${mobileOpen ? 'sidebar-open' : ''}`}>
-      <Link href="/" className="brand-lockup" onClick={() => setMobileOpen(false)}>
-        <span className="brand-mark"><span></span><span></span><span></span></span>
-        <span className="brand-name">NBA<span>SNIPES</span><small>ANALYTICS</small></span>
-      </Link>
-      <div className="sidebar-season"><span className="season-dot"></span> NBA SEASON <span className="season-tag">NO FEED</span></div>
-      <nav className="side-nav">
-        {navGroups.map((group) => <div className="nav-group" key={group.label}>
-          <p className="nav-label">{group.label}</p>
-          {group.items.map(({ href, title: itemTitle, icon: Icon }) => <Link key={href} href={href} onClick={() => setMobileOpen(false)} className={`nav-link ${path === href ? 'nav-active' : ''}`} data-testid={`link-nav-${itemTitle.toLowerCase().replaceAll(' ', '-')}`}>
-            <Icon size={17} strokeWidth={1.8} /><span>{itemTitle}</span>
-          </Link>)}
-        </div>)}
-      </nav>
-      <div className="sidebar-bottom">
-        <div className="side-note"><div className="side-note-icon"><CircleHelp size={16}/></div><div><strong>Independent analysis</strong><p>Not affiliated with or endorsed by the NBA.</p></div></div>
-        <div className="sidebar-foot"><span>BUILT FOR THE BOX SCORE</span><span>v0.1.0</span></div>
-      </div>
-    </aside>
-    {mobileOpen && <button aria-label="Close navigation" className="mobile-scrim" onClick={() => setMobileOpen(false)} />}
-    <div className="main-column">
-      <header className="topbar">
-        <button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={19}/></button>
-        <div className="crumb"><span>NBA SNIPES</span><b>/</b><strong>{title.toUpperCase()}</strong></div>
-        <div className="topbar-right"><span className={`source-status-pill status-${feedMode}`}><span></span>{feedLabel}</span><span className="topbar-season">{dataStatus.data?.provider ?? 'NBA · LIVE FEED REQUIRED'}</span><div className="user-mark">NS</div></div>
-      </header>
-      <div className="page-wrap">
-        <Switch>
-          <Route path="/" component={DashboardPage}/>
-          <Route path="/snipes" component={SnipesPage}/>
-          <Route path="/props" component={PropsPage}/>
-          <Route path="/slip-builder" component={SlipBuilderPage}/>
-          <Route path="/matchups" component={MatchupsPage}/>
-          <Route path="/players/:playerId" component={PlayerProfilePage}/>
-          <Route path="/players" component={PlayersPage}/>
-          <Route path="/teams/:teamId" component={TeamProfilePage}/>
-          <Route path="/teams" component={TeamsPage}/>
-          <Route path="/watchlist" component={WatchlistPage}/>
-          <Route path="/audit" component={AuditPage}/>
-          <Route path="/performance" component={PerformancePage}/>
-          <Route component={NotFound}/>
-        </Switch>
-        <footer className="page-footer"><span>NBA SNIPES ANALYTICS <i>·</i> INDEPENDENT RESEARCH</span><span>Not affiliated with or endorsed by the National Basketball Association.</span></footer>
-      </div>
-    </div>
-  </div>;
+const WATCHLIST_KEY = 'rimraider-watchlist';
+
+function fmt(value: number | null | undefined, digits = 1) {
+  if (value === null || value === undefined || Number.isNaN(value)) return '—';
+  return value.toFixed(Number.isInteger(value) ? 0 : digits);
 }
 
-function PageHeading({ eyebrow, title, subtitle, action }: { eyebrow: string; title: string; subtitle: string; action?: ReactNode }) {
-  return <div className="page-heading"><div><div className="eyebrow"><span></span>{eyebrow}</div><h1>{title}</h1><p>{subtitle}</p></div>{action && <div className="heading-action">{action}</div>}</div>;
+function pct(value: number | null | undefined) {
+  if (value === null || value === undefined) return '—';
+  return `${(value * 100).toFixed(1)}%`;
 }
-function Panel({ children, className = '' }: { children: ReactNode; className?: string }) { return <section className={`panel ${className}`}>{children}</section>; }
-function PanelTitle({ children, meta }: { children: ReactNode; meta?: ReactNode }) { return <div className="panel-title"><h2>{children}</h2>{meta}</div>; }
-function DataNotice({ status, fallback = 'No verified data source is connected.' }: { status?: { mode?: string; provider?: string; message?: string; lastUpdated?: string | null }; fallback?: string }) {
-  const mode = status?.mode ?? 'unavailable';
-  const label = mode === 'live' ? 'LIVE PROVIDER' : mode === 'stale' ? 'STALE DATA' : mode === 'unavailable' ? 'SOURCE OFFLINE' : 'SOURCE STATUS UNKNOWN';
-  return <div className={`data-notice notice-${mode}`}><span className="notice-icon">{mode === 'live' ? <Activity size={14}/> : mode === 'unavailable' ? <ShieldAlert size={14}/> : <Database size={14}/>}</span><div><strong>{label}</strong><span>{status?.message || fallback}{status?.provider ? ` · ${status.provider}` : ''}</span></div>{status?.lastUpdated && <small>{new Date(status.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>}</div>;
+
+function shortDate(value: string | Date | null | undefined) {
+  if (!value) return 'Date unavailable';
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(value));
 }
-function LoadingPanel({ rows = 4 }: { rows?: number }) { return <div className="skeleton-stack">{Array.from({ length: rows }, (_, i) => <div className="skeleton-line" key={i}/>)}</div>; }
-function EmptyState({ title, body }: { title: string; body: string }) { return <div className="empty-state"><span className="empty-whistle"><Crosshair size={19}/></span><strong>{title}</strong><p>{body}</p></div>; }
-function ErrorState({ retry }: { retry: () => void }) { return <div className="error-state"><ShieldAlert size={18}/><span>Couldn’t load this feed.</span><button onClick={retry}>Try again</button></div>; }
-function Metric({ label, value, suffix, accent }: { label: string; value: ReactNode; suffix?: string; accent?: string }) { return <div className="metric"><span>{label}</span><strong style={accent ? { color: accent } : undefined}>{value}{suffix && <small>{suffix}</small>}</strong></div>; }
-function StatPill({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'good' | 'warn' }) { return <span className={`stat-pill ${tone}`}>{children}</span>; }
-function marketLabel(market: string) { return marketNames[market] || market.toUpperCase(); }
-function fmtLine(value: number | null | undefined) { return value == null ? '—' : Number.isInteger(value) ? String(value) : value.toFixed(1); }
-function fmtProbability(value: number | null | undefined) { return value == null ? '—' : `${(value * 100).toFixed(1)}%`; }
-function fmtDelta(value: number | null | undefined) { return value == null ? '—' : `${value > 0 ? '+' : ''}${value.toFixed(1)}`; }
-function initials(name: string) { return name.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase(); }
-function PlayerAvatar({ name, image, size = 'md' }: { name: string; image?: string | null; size?: string }) {
-  return image ? <img className={`avatar avatar-${size}`} src={image} alt={name} onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : <span className={`avatar avatar-${size}`}>{initials(name)}</span>;
+
+function gameTime(value: string | null | undefined) {
+  if (!value) return 'TBD';
+  return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date(value));
 }
-function GameCard({ game }: { game: any }) {
-  const live = game.status === 'live';
-  return <div className="game-card">
-    <div className="game-meta"><span className={live ? 'live-label' : ''}>{live ? <><i className="live-dot"/> LIVE · Q{game.period ?? 1} {game.clock ?? ''}</> : game.status === 'final' ? 'FINAL' : new Date(game.tipoff || game.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span><span>{game.date ? new Date(game.date).toLocaleDateString([], { month: 'short', day: 'numeric' }) : 'TODAY'}</span></div>
-    {[game.awayTeam, game.homeTeam].map((team: any, i: number) => <div className="game-team" key={team.id || team.abbreviation}>
-      <span className="team-monogram" style={{ '--team-color': team.color || '#d44b38' } as CSSProperties}>{team.abbreviation}</span><strong>{team.city || team.name}</strong><b>{(i === 0 ? game.awayScore : game.homeScore) ?? (game.status === 'scheduled' ? '' : '—')}</b>
-    </div>)}
-    <div className="game-card-foot"><span>{game.status === 'scheduled' ? 'TIP-OFF' : 'GAME CENTER'}</span><ArrowRight size={14}/></div>
-  </div>;
+
+function price(value: number) {
+  return value > 0 ? `+${value}` : `${value}`;
 }
-function useStoredList<T,>(key: string): [T[], (next: T[] | ((old: T[]) => T[])) => void] {
-  const [items, setItems] = useState<T[]>(() => { try { return JSON.parse(localStorage.getItem(key) || '[]') as T[]; } catch { return []; } });
-  const update = (next: T[] | ((old: T[]) => T[])) => setItems((old) => {
-    const value = typeof next === 'function' ? next(old) : next;
-    localStorage.setItem(key, JSON.stringify(value));
-    return value;
+
+function pointLabel(point: number, market: string) {
+  if (market === 'total') return `${point}`;
+  return `${point > 0 ? '+' : ''}${point}`;
+}
+
+function useWatchlist(): [string[], (id: string) => void] {
+  const [items, setItems] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(WATCHLIST_KEY) || '[]');
+    } catch {
+      return [];
+    }
   });
-  return [items, update];
+
+  const toggle = (id: string) =>
+    setItems((current) => {
+      const next = current.includes(id) ? current.filter((value) => value !== id) : [...current, id];
+      localStorage.setItem(WATCHLIST_KEY, JSON.stringify(next));
+      return next;
+    });
+
+  return [items, toggle];
 }
 
-function DashboardPage() {
-  const status = useGetNbaDataStatus();
-  const health = useHealthCheck();
-  const summary = useGetNbaDashboardSummary();
-  const gamesQuery = useGetNbaGames();
-  const alertsQuery = useGetNbaLiveAlerts();
-  const dataStatus = status.data || summary.data?.dataStatus;
-  const feedUnavailable = dataStatus?.mode === 'unavailable';
-  const games = summary.data?.games?.length ? summary.data.games : gamesQuery.data || [];
-  const top = summary.data?.topEdges || [];
-  const alerts = alertsQuery.data?.events || [];
-  return <div className="page-content">
-    <PageHeading eyebrow="SLATE DESK" title="The board, at a glance." subtitle="NBA schedules, stats and player markets from verified sources." action={<Link href="/snipes" className="button-primary"><Crosshair size={16}/> Explore signals <ArrowRight size={15}/></Link>}/>
-    <DataNotice status={dataStatus}/>
-    <div className="hero-band"><div className="court-lines"></div><div className="hero-copy"><div className="hero-kicker"><span className="hero-mark"></span> TONIGHT’S SLATE <span className="kicker-divider"></span>{feedUnavailable ? 'SOURCE STATUS: OFFLINE' : summary.data?.date ? new Date(summary.data.date).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }) : 'WAITING FOR VERIFIED DATA'}</div><h2>Read the game.<br/><em>Then read the numbers.</em></h2><p>Independent player-prop analysis with the why behind every signal.</p></div><div className="hero-score"><div className="score-top"><span>SLATE HEALTH</span><span className={feedUnavailable || health.isError ? 'health-off' : 'health-on'}><i/>{feedUnavailable ? 'SOURCE OFFLINE' : health.isError ? 'CHECK SOURCE' : 'FEED CONNECTED'}</span></div><div className="hero-score-num">{feedUnavailable ? '—' : summary.data?.gamesOnSlate ?? (games.length || '—')}<small> GAMES</small></div><div className="score-bottom"><span>{feedUnavailable ? 'Awaiting verified data' : `${summary.data?.playersAnalyzed ?? '—'} players scanned`}</span><span className="score-arrow"><ArrowUpRight size={16}/></span></div></div></div>
-    <div className="metric-grid">
-      <Metric label="GAMES ON SLATE" value={feedUnavailable ? '—' : summary.data?.gamesOnSlate ?? (games.length || '—')} suffix={feedUnavailable ? ' source required' : ' matchups'}/>
-      <Metric label="PLAYERS ANALYZED" value={feedUnavailable ? '—' : summary.data?.playersAnalyzed ?? '—'} suffix={feedUnavailable ? ' source required' : ' in pool'}/>
-      <Metric label="TOP MODEL CONFIDENCE" value={feedUnavailable ? '—' : fmtProbability(summary.data?.topConfidence)} accent="hsl(var(--secondary))"/>
-      <Metric label="LIVE GAMES" value={feedUnavailable ? '—' : summary.data?.liveGames ?? games.filter((g: any) => g.status === 'live').length} suffix={feedUnavailable ? ' source required' : ' right now'}/>
-    </div>
-    <div className="dashboard-grid">
-      <Panel className="games-panel"><PanelTitle meta={<Link href="/matchups" className="text-link">Full matchup board <ArrowRight size={14}/></Link>}>Today’s matchups</PanelTitle>
-        {summary.isLoading || gamesQuery.isLoading ? <LoadingPanel rows={3}/> : summary.isError && gamesQuery.isError ? <ErrorState retry={() => { void summary.refetch(); void gamesQuery.refetch(); }}/> : games.length ? <div className="games-grid">{games.slice(0, 6).map((game: any) => <GameCard game={game} key={game.id}/>)}</div> : <EmptyState title="No games in this slate" body="Game schedules are currently unavailable from the data provider."/>}
-      </Panel>
-      <Panel className="alerts-panel"><PanelTitle meta={<span className="mini-mode">{alertsQuery.data?.mode === 'live' ? 'LIVE FEED' : alertsQuery.data?.mode === 'unavailable' ? 'SOURCE OFFLINE' : 'WAITING FOR FEED'}</span>}>Court watch</PanelTitle>
-        {alertsQuery.isLoading ? <LoadingPanel rows={3}/> : alertsQuery.isError ? <ErrorState retry={() => void alertsQuery.refetch()}/> : alerts.length ? <div className="alert-list">{alerts.slice(0, 4).map((a: any) => <div className="alert-row" key={a.id}><span className="alert-kind">{a.kind === 'milestone' ? <Trophy size={14}/> : <Activity size={14}/>}</span><div><strong>{a.title}</strong><p>{a.detail}</p><small>{new Date(a.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</small></div></div>)}</div> : <div className="waiting-state"><Clock3 size={21}/><strong>No live events to report</strong><p>{alertsQuery.data?.dataStatus?.message || 'Live alerts appear only when a verified game feed is connected.'}</p></div>}
-      </Panel>
-    </div>
-     <Panel className="signal-panel"><PanelTitle meta={<Link href="/snipes" className="text-link">View all signals <ArrowRight size={14}/></Link>}>Signals to know <span className="section-subtitle">Verified projections only</span></PanelTitle>
-      {summary.isLoading ? <LoadingPanel rows={3}/> : summary.isError ? <ErrorState retry={() => void summary.refetch()}/> : top.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>RANK / PLAYER</th><th>MARKET</th><th>LINE</th><th>MODEL</th><th>LINE GAP</th><th>CONFIDENCE</th></tr></thead><tbody>{top.slice(0, 5).map((s: any) => <tr key={s.id}><td><div className="player-cell"><span className="rank-cell">{String(s.rank).padStart(2, '0')}</span><div><strong>{s.playerName}</strong><small>{s.team} · vs {s.opponent}</small></div></div></td><td>{marketLabel(s.market)}</td><td>{fmtLine(s.line)}</td><td className="model-value">{fmtLine(s.projection)}</td><td className="edge-value">{fmtDelta(s.edge)}</td><td><StatPill tone={s.confidence === 'high' ? 'good' : 'neutral'}>{s.confidence}</StatPill></td></tr>)}</tbody></table></div> : <EmptyState title="No ranked signals available" body="Verified stats and sportsbook markets must be connected before projections can appear."/>}
-    </Panel>
-    <div className="disclaimer-strip"><ShieldAlert size={15}/><span>No picks or projections are shown until the underlying NBA statistics and sportsbook markets can be verified.</span></div>
-  </div>;
+function DataState({ status, compact = false }: { status?: DataStatus; compact?: boolean }) {
+  const mode = status?.mode ?? 'unavailable';
+  const tone =
+    mode === 'live'
+      ? 'border-primary/30 bg-primary/10 text-primary'
+      : mode === 'stale'
+        ? 'border-accent/30 bg-accent/10 text-accent'
+        : 'border-destructive/30 bg-destructive/10 text-destructive';
+  const label = mode === 'live' ? 'Live · ESPN' : mode === 'stale' ? 'Stale feed' : mode === 'demo' ? 'Demo' : 'Feed unavailable';
+
+  return (
+    <span
+      title={status?.message}
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[.12em] ${tone} ${compact ? '' : 'mt-2'}`}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {label}
+    </span>
+  );
 }
 
-function MarketTabs({ selected, onSelect }: { selected: Market; onSelect: (m: Market) => void }) { return <div className="market-tabs">{markets.map((m) => <button key={m} className={selected === m ? 'market-tab selected' : 'market-tab'} onClick={() => onSelect(m)} data-testid={`filter-market-${m}`}>{m === 'all' ? 'All markets' : marketLabel(m)}</button>)}</div>; }
-function SnipesPage() {
+function EmptyState({
+  title,
+  body,
+  icon: Icon = Database,
+}: {
+  title: string;
+  body: string;
+  icon?: typeof Database;
+}) {
+  return (
+    <div className="rounded-xl border border-dashed border-border bg-card/40 p-6 text-center">
+      <Icon size={22} className="mx-auto mb-3 text-muted-foreground" />
+      <p className="font-semibold">{title}</p>
+      <p className="mx-auto mt-1 max-w-lg text-sm leading-6 text-muted-foreground">{body}</p>
+    </div>
+  );
+}
+
+function QueryState({
+  loading,
+  error,
+  errorMessage,
+  empty,
+  emptyTitle = 'No records returned',
+  emptyBody = 'The provider returned no records for this view.',
+  children,
+  onRetry,
+}: {
+  loading?: boolean;
+  error?: boolean;
+  errorMessage?: string | null;
+  empty?: boolean;
+  emptyTitle?: string;
+  emptyBody?: string;
+  children: React.ReactNode;
+  onRetry?: () => void;
+}) {
+  if (loading) {
+    return (
+      <div className="space-y-2">
+        {[0, 1, 2].map((row) => (
+          <div key={row} className="h-16 animate-pulse rounded-xl border border-border bg-card/60" />
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-destructive/25 bg-destructive/5 p-6">
+        <p className="font-semibold">Feed unavailable</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          The request failed{errorMessage ? ` (${errorMessage})` : ''}. Check that the API server is running with{' '}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">pnpm --filter @workspace/api-server run dev</code>{' '}
+          and retry.
+        </p>
+        {onRetry ? (
+          <button
+            onClick={onRetry}
+            className="mt-4 flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:border-primary/40 hover:text-primary"
+          >
+            <RefreshCw size={13} /> Retry
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (empty) return <EmptyState title={emptyTitle} body={emptyBody} />;
+
+  return <>{children}</>;
+}
+
+function PageHeader({
+  eyebrow,
+  title,
+  copy,
+  action,
+}: {
+  eyebrow: string;
+  title: string;
+  copy: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+      <div>
+        <p className="mb-2 font-mono text-[10px] uppercase tracking-[.22em] text-primary">{eyebrow}</p>
+        <h1 className="text-3xl font-extrabold tracking-[-.04em] text-foreground md:text-4xl">{title}</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{copy}</p>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function AppShell({ children }: { children: React.ReactNode }) {
+  const [location] = useLocation();
+  const [open, setOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const health = useDataHealth({ queryKey: getDataHealthQueryKey() });
+  const alerts = useGetLiveAlerts({ queryKey: getLiveAlertsQueryKey(), refetchInterval: 60_000 });
+  const feedLabel = health.isLoading
+    ? 'CHECKING FEED'
+    : health.isError
+      ? 'API OFFLINE'
+      : health.data?.connection === 'connected'
+        ? 'DATA CURRENT'
+        : 'SYNC REQUIRED';
+  const events = alerts.data?.events ?? [];
+
+  return (
+    <div className="min-h-[100dvh] bg-background">
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex w-[244px] flex-col border-r border-sidebar-border bg-sidebar transition-transform md:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}
+      >
+        <div className="flex h-[76px] items-center border-b border-sidebar-border px-6">
+          <Link href="/" className="flex items-center gap-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-primary text-primary-foreground">
+              <Zap size={16} fill="currentColor" />
+            </span>
+            <span>
+              <span className="block font-mono text-sm font-medium tracking-[-.04em] text-foreground">
+                Rim<span className="text-primary">Raider</span>
+              </span>
+              <span className="mt-0.5 block font-mono text-[8px] tracking-[.08em] text-muted-foreground">
+                NBA decision terminal
+              </span>
+            </span>
+          </Link>
+        </div>
+        <nav className="flex-1 space-y-1 px-3 py-5">
+          {nav.map((item) => {
+            const Icon = item.icon;
+            const active = location === item.href || (item.href !== '/' && location.startsWith(item.href));
+            return (
+              <Link
+                href={item.href}
+                key={item.href}
+                onClick={() => setOpen(false)}
+                className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-xs font-semibold transition-colors ${
+                  active ? 'bg-primary/10 text-primary' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground'
+                }`}
+              >
+                <Icon size={16} strokeWidth={active ? 2.4 : 1.7} />
+                <span>{item.label}</span>
+                {item.hot ? <span className="ml-auto h-1.5 w-1.5 rounded-full bg-accent" /> : null}
+              </Link>
+            );
+          })}
+        </nav>
+        <div className="border-t border-sidebar-border p-4">
+          <a
+            href="https://www.instagram.com/topcapperz/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mb-4 flex items-center gap-3 rounded-lg px-3 py-2.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent"
+          >
+            <Instagram size={15} /> Daily plays <ExternalLink size={11} className="ml-auto opacity-50" />
+          </a>
+          <Link
+            href="/admin"
+            onClick={() => setOpen(false)}
+            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-xs ${
+              location === '/admin' ? 'bg-secondary/10 text-secondary' : 'text-sidebar-foreground hover:bg-sidebar-accent'
+            }`}
+          >
+            <Shield size={15} /> Ops / data health
+          </Link>
+          <div className="mt-4 flex items-center gap-2 px-3 font-mono text-[10px] uppercase tracking-[.12em] text-muted-foreground">
+            <span className={`h-1.5 w-1.5 rounded-full ${health.data?.connection === 'connected' ? 'bg-primary' : 'bg-accent'}`} />
+            {feedLabel}
+          </div>
+        </div>
+      </aside>
+
+      {open ? (
+        <button
+          aria-label="Close menu"
+          onClick={() => setOpen(false)}
+          className="fixed inset-0 z-30 bg-background/70 backdrop-blur-sm md:hidden"
+        >
+          <X className="absolute right-5 top-5 text-muted-foreground" />
+        </button>
+      ) : null}
+
+      <div className="md:pl-[244px]">
+        <header className="sticky top-0 z-20 flex h-[76px] items-center justify-between border-b border-border/80 bg-background/90 px-4 backdrop-blur-xl md:px-8">
+          <button
+            aria-label="Open menu"
+            onClick={() => setOpen(true)}
+            className="rounded-lg border border-border p-2 text-muted-foreground md:hidden"
+          >
+            <Menu size={18} />
+          </button>
+          <div className="hidden items-center gap-2 font-mono text-[10px] uppercase tracking-[.16em] text-muted-foreground md:flex">
+            <span className="text-primary">NBA /</span> RimRaider
+            <span className="mx-1 text-border">•</span> {shortDate(new Date())}
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <div className="relative">
+              <button
+                aria-label="Injury alerts"
+                onClick={() => setNotificationsOpen((value) => !value)}
+                className="rounded-lg border border-border p-2 text-muted-foreground hover:border-primary/40 hover:text-primary"
+              >
+                <Bell size={16} />
+              </button>
+              {notificationsOpen ? (
+                <div className="absolute right-0 top-full mt-2 w-80 rounded-xl border border-border bg-card/95 p-4 shadow-xl">
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="font-mono text-[10px] uppercase tracking-[.16em] text-muted-foreground">
+                      Injury report
+                    </p>
+                    <button onClick={() => setNotificationsOpen(false)} className="text-muted-foreground hover:text-foreground">
+                      <X size={14} />
+                    </button>
+                  </div>
+                  {alerts.isLoading ? (
+                    <p className="text-sm text-muted-foreground">Loading alerts…</p>
+                  ) : events.length > 0 ? (
+                    <div className="max-h-72 space-y-2 overflow-y-auto">
+                      {events.slice(0, 6).map((alert) => (
+                        <div key={alert.id} className="rounded-lg border border-border/70 bg-muted/30 p-3">
+                          <p className="text-xs font-semibold">{alert.title}</p>
+                          <p className="mt-1 line-clamp-2 text-[10px] text-muted-foreground">{alert.detail}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      {alerts.isError ? 'Injury feed unavailable.' : 'No active injury reports.'}
+                    </p>
+                  )}
+                </div>
+              ) : null}
+            </div>
+            <Link
+              href="/admin"
+              className="hidden items-center gap-2 rounded-lg border border-border px-3 py-2 text-[11px] font-semibold text-muted-foreground hover:border-primary/40 hover:text-foreground sm:flex"
+            >
+              <span className={`h-2 w-2 rounded-full ${health.data?.connection === 'connected' ? 'bg-primary' : 'bg-accent'}`} />
+              {feedLabel}
+            </Link>
+          </div>
+        </header>
+
+        <main className="mx-auto max-w-[1440px] px-4 py-7 md:px-8 md:py-9">{children}</main>
+
+        <footer className="border-t border-border/80 px-4 py-6 text-[10px] leading-5 text-muted-foreground md:px-8">
+          <p>RimRaider is an independent NBA analytics project and is not affiliated with or endorsed by the National Basketball Association.</p>
+          <p>Schedule, scores, rosters and injury data from ESPN. Game lines are as reported by ESPN's sportsbook partners. Informational only.</p>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  note,
+  accent = 'lime',
+  icon: Icon = Activity,
+}: {
+  label: string;
+  value: string | number;
+  note: string;
+  accent?: 'lime' | 'violet' | 'magenta';
+  icon?: typeof Activity;
+}) {
+  const tones = {
+    lime: 'text-primary border-primary/20',
+    violet: 'text-secondary border-secondary/20',
+    magenta: 'text-accent border-accent/20',
+  };
+  return (
+    <div className={`rounded-xl border bg-card/80 p-4 ${tones[accent]}`}>
+      <div className="mb-5 flex items-center justify-between">
+        <span className="font-mono text-[10px] uppercase tracking-[.16em] text-muted-foreground">{label}</span>
+        <Icon size={15} />
+      </div>
+      <div className="text-2xl font-extrabold tracking-[-.04em] text-foreground">{value}</div>
+      <div className="mt-1 text-[11px] text-muted-foreground">{note}</div>
+    </div>
+  );
+}
+
+function ScoreLine({ game }: { game: Game }) {
+  const hasScore = game.status !== 'scheduled' && game.awayScore !== null && game.homeScore !== null;
+  return (
+    <div className="text-center">
+      {hasScore ? (
+        <>
+          <div className="font-mono text-2xl font-bold">
+            {game.awayScore} <span className="text-muted-foreground">–</span> {game.homeScore}
+          </div>
+          <div className="mt-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+            {game.status === 'live' ? `${game.period ?? ''} ${game.clock ?? ''}`.trim() : 'final'}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="font-mono text-xl font-semibold text-secondary">{gameTime(game.tipoff)}</div>
+          <div className="mt-1 text-[9px] uppercase tracking-wider text-muted-foreground">{shortDate(game.date)}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function GameRow({ game }: { game: Game }) {
+  const hasScore = game.status !== 'scheduled' && game.awayScore !== null && game.homeScore !== null;
+
+  return (
+    <Link
+      href={`/games/${game.id}`}
+      className="group flex items-center gap-3 rounded-xl border border-border bg-card/70 p-3 transition-colors hover:border-primary/40 hover:bg-card"
+    >
+      <div className="w-[52px] shrink-0 text-center">
+        <div className="font-mono text-[11px] font-medium text-foreground">{gameTime(game.tipoff)}</div>
+        <div className={`mt-1 text-[9px] uppercase tracking-wider ${game.status === 'live' ? 'text-accent' : 'text-muted-foreground'}`}>
+          {game.status}
+        </div>
+      </div>
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        <TeamCrest team={game.awayTeam} size="sm" />
+        <span className="text-sm font-semibold">{game.awayTeam.abbreviation}</span>
+        <span className="font-mono text-[10px] uppercase text-muted-foreground">at</span>
+        <TeamCrest team={game.homeTeam} size="sm" />
+        <span className="text-sm font-semibold">{game.homeTeam.abbreviation}</span>
+        <span className="ml-auto hidden truncate text-[10px] text-muted-foreground lg:block">{game.venue ?? ''}</span>
+      </div>
+      <div className="w-[54px] shrink-0 text-right">
+        {hasScore ? (
+          <div className="font-mono text-sm font-bold">
+            {game.awayScore}–{game.homeScore}
+          </div>
+        ) : (
+          <div className="font-mono text-[10px] text-muted-foreground">{shortDate(game.date)}</div>
+        )}
+      </div>
+      <ChevronRight size={15} className="shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
+    </Link>
+  );
+}
+
+function OddsPanel({ feed, loading, error, onRetry }: { feed?: OddsFeed; loading: boolean; error: boolean; onRetry: () => void }) {
+  if (loading) {
+    return (
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="h-40 animate-pulse rounded-xl border border-border bg-card/70" />
+        <div className="h-40 animate-pulse rounded-xl border border-border bg-card/70" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-destructive/25 bg-destructive/5 p-6">
+        <p className="font-semibold">Odds feed unavailable</p>
+        <p className="mt-1 text-sm text-muted-foreground">No prices were filled in by assumption.</p>
+        <button
+          onClick={onRetry}
+          className="mt-4 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:border-primary/40"
+        >
+          Retry odds feed
+        </button>
+      </div>
+    );
+  }
+
+  if (!feed || feed.games.length === 0) {
+    return (
+      <EmptyState
+        icon={TrendingUp}
+        title="No verified game lines"
+        body={
+          feed?.provider
+            ? `${feed.provider} did not publish prices for a game on the current slate.`
+            : 'ESPN did not return sportsbook prices for the current slate.'
+        }
+      />
+    );
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      {feed.games.map(({ game, sportsbooks }) => (
+        <div key={game.id} className="rounded-xl border border-border bg-card/70 p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[.18em] text-primary">Game market</p>
+              <h3 className="mt-1 text-base font-bold">
+                {game.awayTeam.abbreviation} at {game.homeTeam.abbreviation}
+              </h3>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                {shortDate(game.date)} · {gameTime(game.tipoff)}
+              </p>
+            </div>
+            <span className="font-mono text-[10px] uppercase text-muted-foreground">{sportsbooks.length} book{sportsbooks.length === 1 ? '' : 's'}</span>
+          </div>
+          <div className="space-y-3">
+            {sportsbooks.map((book) => (
+              <div key={book.key} className="rounded-lg border border-border/70 bg-muted/30 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-bold">{book.title}</span>
+                  <span className="font-mono text-[9px] uppercase text-muted-foreground">{feed.priceType}</span>
+                </div>
+                <div className="space-y-2">
+                  {book.markets.map((market) => (
+                    <div key={market.key} className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">{market.label}</span>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {market.outcomes.map((outcome) => (
+                          <span
+                            key={`${market.key}-${outcome.name}`}
+                            className="rounded border border-primary/20 bg-primary/5 px-2 py-1 text-[10px] text-foreground"
+                          >
+                            {outcome.name} {outcome.point !== null ? pointLabel(outcome.point, market.key) : ''}{' '}
+                            <b className="ml-1 text-primary">{price(outcome.price)}</b>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function InjuryPanel() {
+  const query = useGetLiveAlerts({ queryKey: getLiveAlertsQueryKey(), refetchInterval: 60_000 });
+  const events: LiveAlert[] = query.data?.events ?? [];
+
+  return (
+    <section className="rounded-xl border border-border bg-card/70 p-5 md:p-6">
+      <div className="mb-5 flex items-center justify-between">
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[.18em] text-accent">Availability</p>
+          <h2 className="mt-1 text-lg font-bold tracking-[-.03em]">Injury report</h2>
+        </div>
+        <DataState status={query.data?.dataStatus} />
+      </div>
+      <QueryState
+        loading={query.isLoading}
+        error={query.isError}
+        errorMessage={query.error?.message}
+        empty={!query.isLoading && !query.isError && events.length === 0}
+        onRetry={() => void query.refetch()}
+      >
+        <div className="space-y-2">
+          {events.slice(0, 6).map((alert) => (
+            <div key={alert.id} className="rounded-lg border border-border/70 bg-muted/30 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold">{alert.title}</p>
+                <span className="font-mono text-[9px] uppercase text-muted-foreground">{shortDate(alert.createdAt)}</span>
+              </div>
+              <p className="mt-1 line-clamp-2 text-[10px] leading-4 text-muted-foreground">{alert.detail}</p>
+            </div>
+          ))}
+        </div>
+      </QueryState>
+    </section>
+  );
+}
+
+function Home() {
+  const summary = useDashboardSummary({ queryKey: getDashboardSummaryQueryKey() });
+  const today = useGetTodayGames({ queryKey: getTodayGamesQueryKey() });
+  const future = useGetFutureGames({ queryKey: getFutureGamesQueryKey() });
+  const odds = useGetOdds({ queryKey: getOddsQueryKey() });
+  const picks = useGetPicks(undefined, { queryKey: getPicksQueryKey() });
+  const [watchlist, toggleWatch] = useWatchlist();
+
+  const data = summary.data;
+  const todayGames = today.data ?? [];
+  const futureGames = future.data ?? [];
+
+  return (
+    <>
+      <div className="relative mb-8 overflow-hidden rounded-2xl border border-border bg-card/40 px-5 py-7 md:px-8 md:py-9">
+        <div className="absolute right-[-4%] top-[-60%] h-[420px] w-[420px] rounded-full bg-secondary/10 blur-3xl" />
+        <div className="relative flex flex-col justify-between gap-6 md:flex-row md:items-center">
+          <div className="flex-1">
+            <div className="mb-3 flex flex-wrap items-center gap-3">
+              <span className="font-mono text-[10px] uppercase tracking-[.22em] text-primary">NBA / live board</span>
+              <DataState status={data?.dataStatus} compact />
+            </div>
+            <h1 className="max-w-3xl text-4xl font-extrabold leading-[.95] tracking-[-.065em] text-foreground md:text-6xl">
+              RimRaider<br />
+              <span className="text-primary">Your NBA. One spot.</span>
+            </h1>
+            <p className="mt-5 max-w-xl text-sm leading-6 text-muted-foreground">
+              Real schedule, scores, rosters and injuries from ESPN, live player props from DunkAPI, and Radar Picks
+              generated by the RimRaider model from recent form and de-vigged market prices.
+            </p>
+          </div>
+          <div className="flex shrink-0 justify-center md:flex-1 md:-translate-x-6 lg:-translate-x-10">
+            <img
+              src="/rimraider-logo.png"
+              alt="RimRaider emblem"
+              className="h-auto w-[210px] object-contain drop-shadow-[0_0_34px_rgba(163,255,18,.18)] md:w-[250px] lg:w-[310px]"
+            />
+          </div>
+          <div className="flex w-full flex-col gap-3 md:max-w-[360px]">
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+              <p className="font-mono text-[10px] uppercase tracking-[.16em] text-primary">Provider</p>
+              <p className="mt-2 text-xl font-bold">{data?.dataStatus?.provider ?? 'ESPN'}</p>
+              <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                {data?.dataStatus?.message ?? 'Waiting for the API server.'}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Games today" value={data?.gamesOnSlate ?? '—'} note="On the current slate" icon={CalendarDays} />
+        <StatCard label="Live now" value={data?.liveGames ?? '—'} note="In progress" accent="magenta" icon={Activity} />
+        <StatCard
+          label="Players analyzed"
+          value={data?.playersAnalyzed ? data.playersAnalyzed : '—'}
+          note={data?.playersAnalyzed ? 'Recent form + market prices' : 'Waiting for the props feed'}
+          accent="violet"
+          icon={Users}
+        />
+        <StatCard
+          label="Radar picks"
+          value={data?.topEdges?.length ?? 0}
+          note={data?.topEdges?.length ? 'Model-generated edges' : 'No edges on this slate'}
+          accent="magenta"
+          icon={Target}
+        />
+      </div>
+
+      <div className="grid gap-6 [&>*]:min-w-0 xl:grid-cols-[1.15fr_.85fr]">
+        <section className="rounded-xl border border-border bg-card/70 p-5 md:p-6">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[.18em] text-primary">Market pulse</p>
+              <h2 className="mt-1 text-lg font-bold tracking-[-.03em]">Today's games</h2>
+            </div>
+            <Link href="/matchups" className="flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-primary">
+              Open lab <ArrowUpRight size={13} />
+            </Link>
+          </div>
+          <QueryState
+            loading={today.isLoading}
+            error={today.isError}
+            errorMessage={today.error?.message}
+            empty={!today.isLoading && !today.isError && todayGames.length === 0}
+            emptyTitle="No games today"
+            emptyBody="The NBA schedule has no games on today's slate. Upcoming games are listed beside this panel."
+            onRetry={() => void today.refetch()}
+          >
+            <div className="space-y-2">
+              {todayGames.slice(0, 6).map((game) => (
+                <GameRow game={game} key={game.id} />
+              ))}
+            </div>
+          </QueryState>
+        </section>
+
+        <section className="rounded-xl border border-border bg-card/70 p-5 md:p-6">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[.18em] text-secondary">Next slate</p>
+              <h2 className="mt-1 text-lg font-bold tracking-[-.03em]">Upcoming games</h2>
+            </div>
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              {futureGames[0] ? shortDate(futureGames[0].date) : 'Date pending'}
+            </span>
+          </div>
+          <QueryState
+            loading={future.isLoading}
+            error={future.isError}
+            errorMessage={future.error?.message}
+            empty={!future.isLoading && !future.isError && futureGames.length === 0}
+            onRetry={() => void future.refetch()}
+          >
+            <div className="space-y-2">
+              {futureGames.slice(0, 6).map((game) => (
+                <GameRow game={game} key={game.id} />
+              ))}
+            </div>
+          </QueryState>
+        </section>
+      </div>
+
+      <section className="mt-6 rounded-xl border border-border bg-card/70 p-5 md:p-6">
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[.18em] text-accent">Odds by book</p>
+            <h2 className="mt-1 text-lg font-bold tracking-[-.03em]">Sportsbook lines</h2>
+          </div>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            {odds.data?.provider ?? 'ESPN'}
+          </span>
+        </div>
+        <OddsPanel
+          feed={odds.data}
+          loading={odds.isLoading}
+          error={odds.isError}
+          onRetry={() => void odds.refetch()}
+        />
+      </section>
+
+      <div className="mt-6 grid gap-6 [&>*]:min-w-0 xl:grid-cols-[.85fr_1.15fr]">
+        <InjuryPanel />
+        <section className="rounded-xl border border-border bg-card/70 p-5 md:p-6">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[.18em] text-accent">Signal queue</p>
+              <h2 className="mt-1 text-lg font-bold tracking-[-.03em]">Highest conviction edges</h2>
+            </div>
+            <Link href="/picks" className="flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-primary">
+              Radar picks <ArrowUpRight size={13} />
+            </Link>
+          </div>
+          <QueryState
+            loading={picks.isLoading}
+            error={picks.isError}
+            errorMessage={picks.error?.message}
+            empty={!picks.isLoading && !picks.isError && (picks.data ?? []).length === 0}
+            onRetry={() => void picks.refetch()}
+          >
+            <div className="space-y-2">
+              {(picks.data ?? []).slice(0, 5).map((pick) => (
+                <div key={pick.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/30 p-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">{pick.playerName}</p>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">
+                      {pick.team} vs {pick.opponent} · {pick.market} {fmt(pick.line)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-right">
+                      <p className="font-mono text-[11px] text-primary">
+                        {pick.edge !== null ? `+${(pick.edge * 100).toFixed(1)}%` : '—'}
+                      </p>
+                      <p className="text-[9px] uppercase text-muted-foreground">edge</p>
+                    </div>
+                    <button
+                      onClick={() => toggleWatch(pick.playerId)}
+                      className={`rounded-lg border p-2 ${watchlist.includes(pick.playerId) ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}
+                    >
+                      <Star size={13} fill={watchlist.includes(pick.playerId) ? 'currentColor' : 'none'} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </QueryState>
+        </section>
+      </div>
+    </>
+  );
+}
+
+function PicksPage() {
   const [market, setMarket] = useState<Market>('all');
-  const query = useGetNbaSnipes(market === 'all' ? undefined : { market });
-  const [watch, setWatch] = useStoredList<string>('nba-snipes-watchlist-v2');
-  const snipes = (query.data || []).slice().sort((a: any, b: any) => a.rank - b.rank);
-  return <div className="page-content">
-    <PageHeading eyebrow="MODEL SIGNALS" title="Find the edge." subtitle="Ranked player props, with the reasoning left in." action={<Link href="/audit" className="button-secondary"><Database size={15}/> Model inputs</Link>}/>
-    <DataNotice status={snipes[0]?.dataStatus} fallback="Verified NBA statistics and market odds are required before rankings can be shown."/>
-    <div className="filter-row"><MarketTabs selected={market} onSelect={setMarket}/><span className="count-label">{query.data?.length ? query.data.length : '—'} signals</span></div>
-    <Panel className="signal-list-panel">
-       {query.isLoading ? <LoadingPanel rows={6}/> : query.isError ? <ErrorState retry={() => void query.refetch()}/> : snipes.length ? <div className="table-wrap"><table className="data-table snipes-table"><thead><tr><th># / PLAYER</th><th>PROP</th><th>LINE</th><th>PROJECTION</th><th>OVER CHANCE</th><th>LINE GAP</th><th>SIGNAL</th><th></th></tr></thead><tbody>{snipes.map((s: any) => <tr key={s.id}><td><div className="player-cell"><span className="rank-cell">{String(s.rank).padStart(2, '0')}</span><div><strong>{s.playerName}</strong><small>{s.team} vs {s.opponent}</small></div></div></td><td>{marketLabel(s.market)}</td><td>{fmtLine(s.line)} <small className="muted">{s.sportsbook || 'market line'}</small></td><td><span className="model-value">{fmtLine(s.projection)}</span><small className="table-sub">{fmtProbability(s.overProbability)} model over</small></td><td><div className="probability"><span style={{ width: `${Math.min(100, Math.max(0, s.overProbability * 100))}%`}}></span></div><small>{fmtProbability(s.overProbability)}</small></td><td className="edge-value">{fmtDelta(s.edge)}</td><td><StatPill tone={s.confidence === 'high' ? 'good' : 'neutral'}>{s.confidence}</StatPill></td><td><button className={`icon-button save-button ${watch.includes(s.id) ? 'is-saved' : ''}`} aria-label="Save signal" onClick={() => setWatch((old) => old.includes(s.id) ? old.filter((id) => id !== s.id) : [...old, s.id])}><Bookmark size={16}/></button></td></tr>)}</tbody></table></div> : <EmptyState title="No signals for this market" body="There are no provider-backed signals to display for this selection. Try another market or check back later."/>}
-    </Panel>
-    {snipes.length > 0 && <div className="reasoning-grid">{snipes.slice(0, 2).map((s: any) => <Panel key={s.id} className="reason-card"><div className="reason-top"><span className="reason-icon"><Sparkles size={15}/></span><span>WHY THIS SIGNAL</span><span className="reason-score">SCORE {s.signalScore}</span></div><h3>{s.playerName} <span>{marketLabel(s.market)}</span></h3><p>{s.rationale?.join(' ') || 'No rationale was supplied by the provider.'}</p><div className="reason-foot"><span>{s.team} vs {s.opponent}</span><span>Projection {fmtLine(s.projection)} vs line {fmtLine(s.line)}</span></div></Panel>)}</div>}
-    <div className="disclaimer-strip"><ShieldAlert size={15}/><span>Signal scores are model outputs, not guarantees. This board displays only projections with verified inputs.</span></div>
-  </div>;
+  const [watchlist, toggleWatch] = useWatchlist();
+  const query = useGetPicks(market === 'all' ? undefined : { market }, { queryKey: getPicksQueryKey() });
+  const status = useGetPicksStatus({ queryKey: getPicksStatusQueryKey() });
+  const rows: Pick[] = useMemo(() => query.data ?? [], [query.data]);
+  const model: PicksStatus | undefined = status.data;
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Ranked signal / live board"
+        title="Radar Picks"
+        copy="Every pick is generated by the RimRaider model: recency-weighted player form blended with season baselines, compared against de-vigged sportsbook prices from DunkAPI. The projection, price and reasoning are attached to each row."
+        action={
+          <button
+            onClick={() => void query.refetch()}
+            className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:border-primary/40 hover:text-primary"
+          >
+            <RefreshCw size={14} /> Refresh
+          </button>
+        }
+      />
+      <div className="mb-5 flex gap-2 overflow-x-auto pb-1">
+        {markets.map((item) => (
+          <button
+            key={item}
+            onClick={() => setMarket(item)}
+            className={`whitespace-nowrap rounded-lg border px-3 py-2 text-[11px] font-semibold capitalize transition-colors ${
+              market === item ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {item === 'all' ? 'All signals' : item}
+          </button>
+        ))}
+      </div>
+      <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-border bg-card/50 px-4 py-3 font-mono text-[10px] uppercase tracking-[.14em] text-muted-foreground">
+        <span className="text-primary">Model {model?.modelVersion ?? 'rimraider-v1'}</span>
+        <span>{model?.slateGames ?? 0} slate games</span>
+        <span>{model?.playersAnalyzed ?? 0} players analyzed</span>
+        <span>{model?.picksGenerated ?? 0} picks</span>
+        <span>
+          {model?.lastUpdated ? `Updated ${new Date(model.lastUpdated).toLocaleTimeString()}` : 'Not generated yet'}
+        </span>
+        <span className="ml-auto">{model?.creditsSpent ?? 0} DunkAPI credits</span>
+      </div>
+      {model?.message ? <p className="mb-4 text-xs text-muted-foreground">{model.message}</p> : null}
+      <div className="rounded-xl border border-border bg-card/70 p-5 md:p-6">
+        <div className="mb-4 hidden grid-cols-[1.6fr_1fr_1fr_1fr_auto] gap-4 border-b border-border pb-3 font-mono text-[9px] uppercase tracking-[.15em] text-muted-foreground md:grid">
+          <span>Player / matchup</span>
+          <span>Confidence</span>
+          <span>Projection</span>
+          <span>Model edge</span>
+          <span>Context</span>
+        </div>
+        <QueryState
+          loading={query.isLoading}
+          error={query.isError}
+          errorMessage={query.error?.message}
+          onRetry={() => void query.refetch()}
+        >
+          <div>
+            {rows.map((pick) => (
+              <div key={pick.id} className="grid gap-4 border-b border-border/80 py-4 first:pt-0 last:border-0 md:grid-cols-[1.6fr_1fr_1fr_1fr_auto] md:items-center">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => toggleWatch(pick.playerId)}
+                    className={`rounded-lg border p-2 ${watchlist.includes(pick.playerId) ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-primary'}`}
+                  >
+                    <Star size={14} fill={watchlist.includes(pick.playerId) ? 'currentColor' : 'none'} />
+                  </button>
+                  <div>
+                    <Link href={`/players/${pick.playerId}`} className="text-sm font-bold hover:text-primary">
+                      {pick.playerName}
+                    </Link>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">
+                      {pick.team} · {pick.market} vs {pick.opponent}
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm font-semibold capitalize">{pick.confidence}</div>
+                  <div className="mt-1 h-1.5 w-24 rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(pick.signalScore, 100)}%` }} />
+                  </div>
+                </div>
+                <div>
+                  <div className="font-mono text-sm">{fmt(pick.projection)}</div>
+                  <div className="text-[10px] text-muted-foreground">line {fmt(pick.line)}</div>
+                </div>
+                <div>
+                  <div className="font-mono text-sm text-primary">
+                    {pick.edge !== null ? `+${(pick.edge * 100).toFixed(1)}%` : '—'}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {pct(pick.overProbability)} over
+                    {pick.overOdds !== null ? ` · ${pick.overOdds > 0 ? '+' : ''}${pick.overOdds}` : ''}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1 md:justify-end">
+                  {pick.rationale.slice(0, 2).map((factor) => (
+                    <span key={factor} className="rounded border border-secondary/25 bg-secondary/10 px-2 py-1 text-[9px] text-secondary">
+                      {factor}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </QueryState>
+        {!query.isLoading && !query.isError && rows.length === 0 ? (
+          <EmptyState
+            icon={Target}
+            title={model?.configured ? 'No edges cleared the threshold' : 'Radar Picks needs a DunkAPI key'}
+            body={
+              model?.message ??
+              'The model only lists a pick when its projected probability beats the de-vigged market price by the configured margin. When nothing clears that bar, the board stays empty.'
+            }
+          />
+        ) : null}
+      </div>
+    </>
+  );
 }
+
+function PropCard({ prop, watchlist, onWatch }: { prop: Prop; watchlist: string[]; onWatch: (id: string) => void }) {
+  return (
+    <div className="rounded-xl border border-border bg-card/70 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => onWatch(prop.playerId)}
+            className={`rounded-lg border p-2 ${watchlist.includes(prop.playerId) ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}
+          >
+            <Star size={13} fill={watchlist.includes(prop.playerId) ? 'currentColor' : 'none'} />
+          </button>
+          <div>
+            <Link href={`/players/${prop.playerId}`} className="text-sm font-bold hover:text-primary">
+              {prop.playerName}
+            </Link>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">
+              {prop.team} vs {prop.opponent} · {prop.market} · {prop.sportsbook ?? 'book unavailable'}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4 text-center">
+          <div>
+            <p className="font-mono text-sm">{fmt(prop.line)}</p>
+            <p className="text-[9px] uppercase text-muted-foreground">line</p>
+          </div>
+          <div>
+            <p className="font-mono text-sm">{fmt(prop.projection)}</p>
+            <p className="text-[9px] uppercase text-muted-foreground">projection</p>
+          </div>
+          <div>
+            <p className="font-mono text-sm text-primary">{pct(prop.overProbability)}</p>
+            <p className="text-[9px] uppercase text-muted-foreground">over</p>
+          </div>
+          <div>
+            <p className="font-mono text-sm text-primary">
+              {prop.edge !== null ? `+${(prop.edge * 100).toFixed(1)}%` : '—'}
+            </p>
+            <p className="text-[9px] uppercase text-muted-foreground">edge</p>
+          </div>
+        </div>
+      </div>
+      {prop.rationale.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-1 border-t border-border/70 pt-3">
+          {prop.rationale.map((reason) => (
+            <span key={reason} className="rounded border border-primary/20 bg-primary/5 px-2 py-1 text-[9px] text-primary">
+              {reason}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function PropsPage() {
   const [market, setMarket] = useState<Market>('all');
-  const [search, setSearch] = useState('');
-  const query = useGetNbaProps(market === 'all' ? undefined : { market });
-  const [watch, setWatch] = useStoredList<string>('nba-snipes-watchlist-v2');
-  const filtered = useMemo(() => (query.data || []).filter((p: any) => `${p.playerName} ${p.team} ${p.opponent}`.toLowerCase().includes(search.toLowerCase())), [query.data, search]);
-  return <div className="page-content">
-    <PageHeading eyebrow="MARKET EXPLORER" title="The prop board." subtitle="Search and compare player markets across the available slate." action={<span className="read-only-tag"><Database size={14}/> Provider dependent</span>}/>
-    <DataNotice status={filtered[0]?.dataStatus} fallback="A verified sportsbook market feed is required before player props can be displayed."/>
-    <Panel className="board-panel">
-       <div className="board-tools"><div className="search-wrap"><Search size={16}/><input aria-label="Search props" data-testid="input-prop-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search player, team or opponent"/></div><div className="filter-wrap"><Filter size={15}/><select aria-label="Market filter" value={market} onChange={(e) => setMarket(e.target.value as Market)} data-testid="select-prop-market">{markets.map((m) => <option key={m} value={m}>{m === 'all' ? 'All markets' : marketLabel(m)}</option>)}</select><ChevronDown size={14}/></div><span className="count-label">{filtered.length || '—'} props</span></div>
-       {query.isLoading ? <LoadingPanel rows={7}/> : query.isError ? <ErrorState retry={() => void query.refetch()}/> : filtered.length ? <div className="table-wrap"><table className="data-table prop-table"><thead><tr><th>PLAYER / GAME</th><th>MARKET</th><th>LINE</th><th>PROJECTION</th><th>OVER PROB.</th><th>LINE GAP</th><th>BOOK</th><th></th></tr></thead><tbody>{filtered.map((p: any) => <tr key={p.id}><td><div className="player-cell"><div><strong>{p.playerName}</strong><small>{p.team} · vs {p.opponent}</small></div></div></td><td>{marketLabel(p.market)}</td><td>{fmtLine(p.line)}</td><td className="model-value">{fmtLine(p.projection)}</td><td>{fmtProbability(p.overProbability)}</td><td className={p.edge && p.edge > 0 ? 'edge-value' : ''}>{fmtDelta(p.edge)}</td><td>{p.sportsbook || '—'}</td><td><button className={`icon-button save-button ${watch.includes(p.id) ? 'is-saved' : ''}`} onClick={() => setWatch((old) => old.includes(p.id) ? old.filter((id) => id !== p.id) : [...old, p.id])} aria-label={`Save ${p.playerName} prop`}><Bookmark size={15}/></button></td></tr>)}</tbody></table></div> : <EmptyState title={search ? 'No matching props' : 'No props available'} body={search ? 'Try a different player, team or opponent.' : 'No player prop markets are available until a verified sportsbook feed is connected.'}/>}
-    </Panel>
-  </div>;
-}
-function SlipBuilderPage() {
-  const query = useGetNbaProps();
-  const [selected, setSelected] = useStoredList<any>('nba-snipes-slip-v2');
-  const [stake, setStake] = useState('10');
-  const [search, setSearch] = useState('');
-  const candidates = (query.data || []).filter((p: any) => `${p.playerName} ${p.team}`.toLowerCase().includes(search.toLowerCase()));
-  const estimate = selected.reduce((acc: number, item: any) => acc * (item.odds > 0 ? 1 + item.odds / 100 : 1 + 100 / Math.abs(item.odds || -110)), 1);
-  return <div className="page-content">
-    <PageHeading eyebrow="BROWSER-ONLY WORKSPACE" title="Build a slip." subtitle="Collect single picks or combine legs. Your selections stay in this browser." action={<span className="read-only-tag"><Bookmark size={14}/> Saved locally</span>}/>
-    <DataNotice status={candidates[0]?.dataStatus} fallback="Payouts use listed odds when available; otherwise a rough -110 estimate. This is an educational calculator, not a wagering service."/>
-    <div className="slip-layout">
-       <Panel className="slip-pick-panel"><div className="board-tools slip-search"><div className="search-wrap"><Search size={16}/><input aria-label="Search slip picks" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Find a player prop"/></div><span className="count-label">{candidates.length || '—'} available</span></div>
-        {query.isLoading ? <LoadingPanel rows={5}/> : query.isError ? <ErrorState retry={() => void query.refetch()}/> : candidates.length ? <div className="pick-candidates">{candidates.slice(0, 16).map((p: any) => <div className="pick-candidate" key={p.id}><div><strong>{p.playerName}</strong><small>{marketLabel(p.market)} {p.line == null ? 'line unavailable' : `over ${p.line}`} · {p.team} vs {p.opponent}</small></div><button className="add-pick" onClick={() => setSelected((old) => old.some((i: any) => i.id === p.id) ? old : [...old, { id: p.id, playerName: p.playerName, market: p.market, line: p.line, side: 'Over', odds: p.overOdds, projection: p.projection }])}>{selected.some((i: any) => i.id === p.id) ? <Check size={15}/> : <span>+</span>} {selected.some((i: any) => i.id === p.id) ? 'Added' : 'Add'}</button></div>)}</div> : <EmptyState title="No props to add" body="The prop provider has not supplied candidate legs."/>}
-      </Panel>
-      <Panel className="slip-card"><div className="slip-head"><div><span className="eyebrow"><span/> YOUR BUILD</span><h2>Slip builder</h2></div><span className="local-badge">LOCAL ONLY</span></div>
-        <div className="slip-mode"><button className="mode-on">Parlay <small>{selected.length} legs</small></button><button onClick={() => { if (selected.length > 1) setSelected(selected.slice(0, 1)); }} className="mode-alt">Singles</button></div>
-        <div className="slip-legs">{selected.length ? selected.map((item: any) => <div className="slip-leg" key={item.id}><span className="leg-marker"></span><div><strong>{item.playerName}</strong><small>{marketLabel(item.market)} {item.side} {fmtLine(item.line)}</small></div><span className="leg-odds">{item.odds ? `${item.odds > 0 ? '+' : ''}${item.odds}` : '—'}</span><button className="icon-button" aria-label="Remove leg" onClick={() => setSelected((old) => old.filter((i: any) => i.id !== item.id))}><X size={15}/></button></div>) : <div className="slip-empty"><Crosshair size={20}/><strong>Your slip is open.</strong><span>Add a pick from the board to begin.</span></div>}</div>
-        <label className="stake-label">STAKE<input type="number" min="0" step="0.5" value={stake} onChange={(e) => setStake(e.target.value)} aria-label="Stake amount"/></label>
-        <div className="payout-estimate"><span>ESTIMATED RETURN</span><strong>{selected.length ? `$${(Number(stake || 0) * estimate).toFixed(2)}` : '—'}</strong><small>{selected.length ? 'Estimate from the selected market odds' : 'Add verified odds to calculate an estimate'}</small></div>
-        <button className="button-secondary clear-slip" onClick={() => setSelected([])} disabled={!selected.length}>Clear slip</button>
-        <div className="slip-disclaimer">No picks are submitted or stored remotely. This calculator is not connected to a sportsbook.</div>
-      </Panel>
-    </div>
-  </div>;
-}
-function MatchupsPage() {
-  const matchupsQuery = useGetNbaMatchups();
-  const gamesQuery = useGetNbaGames();
-  const entries = matchupsQuery.data || [];
-  const [selectedId, setSelectedId] = useState('');
-  const currentId = selectedId || entries[0]?.game?.id || gamesQuery.data?.[0]?.id || '';
-  const gameQuery = useGetNbaGame(currentId, { query: { enabled: !!currentId, queryKey: getGetNbaGameQueryKey(currentId) } });
-  return <div className="page-content">
-    <PageHeading eyebrow="GAME ENVIRONMENT" title="Matchup notebook." subtitle="Pace, scoring context and team-level signals for each game."/>
-    <DataNotice status={entries[0]?.dataStatus} fallback="Verified schedules and team statistics are required before matchup analysis can be shown."/>
-    {matchupsQuery.isLoading ? <LoadingPanel rows={5}/> : matchupsQuery.isError ? <ErrorState retry={() => void matchupsQuery.refetch()}/> : entries.length ? <div className="matchup-layout">
-      <div className="matchup-list">{entries.map((m: any) => <button key={m.game.id} onClick={() => setSelectedId(m.game.id)} className={`matchup-select ${m.game.id === currentId ? 'active' : ''}`}><div className="matchup-select-top"><span>{m.game.status === 'live' ? 'LIVE' : 'GAME ENVIRONMENT'}</span><span>{m.game.tipoff ? new Date(m.game.tipoff).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}</span></div><strong>{m.game.awayTeam.abbreviation} <i>@</i> {m.game.homeTeam.abbreviation}</strong><small>{m.game.awayTeam.city} at {m.game.homeTeam.city}</small></button>)}</div>
-      <Panel className="matchup-detail"><PanelTitle meta={<span className="mini-mode">MODEL SNAPSHOT</span>}>Game environment</PanelTitle>
-        {gameQuery.isLoading ? <LoadingPanel rows={3}/> : gameQuery.isError ? <ErrorState retry={() => void gameQuery.refetch()}/> : <div className="matchup-scoreline"><span>{gameQuery.data?.awayTeam?.abbreviation || entries.find((m: any) => m.game.id === currentId)?.game.awayTeam.abbreviation}</span><i>@</i><span>{gameQuery.data?.homeTeam?.abbreviation || entries.find((m: any) => m.game.id === currentId)?.game.homeTeam.abbreviation}</span></div>}
-        {(() => { const m: any = entries.find((x: any) => x.game.id === currentId) || entries[0]; return <><div className="matchup-metrics"><Metric label="PROJECTED PACE" value={m.projectedPace?.toFixed?.(1) ?? '—'}/><Metric label="PROJECTED TOTAL" value={m.projectedTotal?.toFixed?.(1) ?? '—'}/><Metric label="AWAY OFF. RTG" value={m.awayOffenseRating?.toFixed?.(1) ?? '—'}/><Metric label="HOME OFF. RTG" value={m.homeOffenseRating?.toFixed?.(1) ?? '—'}/></div><div className="note-box"><div className="eyebrow"><span/> SCOUTING NOTES</div>{m.notes?.length ? m.notes.map((note: string, i: number) => <p key={i}><span>{String(i + 1).padStart(2, '0')}</span>{note}</p>) : <p><span>—</span>No notes were provided for this matchup.</p>}</div><DataNotice status={m.dataStatus}/></>; })()}
-      </Panel>
-    </div> : <EmptyState title="No matchup research available" body="The matchup provider has not returned a slate. We do not fill gaps with invented team analysis."/>}
-    {!matchupsQuery.isLoading && !entries.length && gamesQuery.data?.length ? <Panel><PanelTitle>Scheduled games</PanelTitle><div className="games-grid">{gamesQuery.data.map((g: any) => <GameCard key={g.id} game={g}/>)}</div></Panel> : null}
-  </div>;
-}
-function PlayersPage() {
-  const [search, setSearch] = useState('');
-  const query = useGetNbaPlayers(search ? { search } : undefined);
-  return <div className="page-content">
-    <PageHeading eyebrow="PLAYER DIRECTORY" title="Know the rotation." subtitle="Search the player pool and move from season rates to recent game logs."/>
-     <DataNotice fallback="A verified NBA statistics source is required before player records can be displayed."/>
-     <Panel><div className="directory-tools"><div className="search-wrap"><Search size={16}/><input data-testid="input-player-search" aria-label="Search players" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search player or team"/></div><span className="count-label">{query.data?.length || '—'} players</span></div>
-      {query.isLoading ? <LoadingPanel rows={7}/> : query.isError ? <ErrorState retry={() => void query.refetch()}/> : query.data?.length ? <div className="player-grid">{query.data.map((p: any) => <Link href={`/players/${p.id}`} className="player-card" key={p.id}><PlayerAvatar name={p.name} image={p.headshotUrl}/><div className="player-card-info"><strong>{p.name}</strong><span>{p.team.abbreviation} · {p.position} {p.jerseyNumber ? `· #${p.jerseyNumber}` : ''}</span><div className="player-mini-stats"><b>{p.points.toFixed(1)}<small> PTS</small></b><b>{p.rebounds.toFixed(1)}<small> REB</small></b><b>{p.assists.toFixed(1)}<small> AST</small></b></div></div><ArrowRight size={15}/></Link>)}</div> : <EmptyState title={search ? 'No players found' : 'Player directory unavailable'} body="There are no player records to show from the configured provider."/>}
-    </Panel>
-  </div>;
-}
-function PlayerProfilePage() {
-  const [path] = useLocation();
-  const id = path.split('/').filter(Boolean).slice(-1)[0] || '';
-  const query = useGetNbaPlayer(id, { query: { enabled: !!id, queryKey: getGetNbaPlayerQueryKey(id) } });
-  const detail = query.data;
-  const p = detail?.player;
-  return <div className="page-content">
-    {query.isLoading ? <LoadingPanel rows={5}/> : query.isError ? <ErrorState retry={() => void query.refetch()}/> : p ? <>
-      <PageHeading eyebrow={`${p.team.abbreviation} · ${p.position}`} title={p.name} subtitle={`${p.team.city} ${p.team.name}${p.jerseyNumber ? ` · #${p.jerseyNumber}` : ''}`} action={<Link href="/players" className="button-secondary">All players <ArrowRight size={15}/></Link>}/>
-      <DataNotice status={detail.dataStatus}/>
-      <div className="profile-overview"><div className="profile-person"><PlayerAvatar name={p.name} image={p.headshotUrl} size="xl"/><div><span className="profile-status"><i/> {p.status || 'ACTIVE'}</span><h2>{p.name}</h2><p>{p.team.abbreviation} <span>·</span> {p.position} <span>·</span> {p.minutes.toFixed(1)} MPG</p></div></div><div className="profile-stats">{[['PTS', p.points], ['REB', p.rebounds], ['AST', p.assists], ['3PM', p.threes], ['USG%', `${p.usageRate.toFixed(1)}%`]].map(([l, v]) => <div key={l}><span>{l}</span><strong>{typeof v === 'number' ? v.toFixed(1) : v}</strong></div>)}</div></div>
-      <Panel><PanelTitle meta={<span className="mini-mode">VERIFIED FEED</span>}>Recent game log</PanelTitle>{detail.recentGames?.length ? <div className="table-wrap"><table className="data-table log-table"><thead><tr><th>DATE</th><th>OPP</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>3PM</th><th>STL</th><th>BLK</th><th>TOV</th></tr></thead><tbody>{detail.recentGames.map((g: any, i: number) => <tr key={`${g.date}-${i}`}><td>{new Date(g.date).toLocaleDateString([], { month: 'short', day: 'numeric' })}</td><td>{g.opponent}</td><td>{g.minutes.toFixed(1)}</td><td className="model-value">{g.points}</td><td>{g.rebounds}</td><td>{g.assists}</td><td>{g.threes}</td><td>{g.steals}</td><td>{g.blocks}</td><td>{g.turnovers}</td></tr>)}</tbody></table></div> : <EmptyState title="No recent games" body="Recent game logs have not been supplied by the player data provider."/>}</Panel>
-    </> : <EmptyState title="Player profile unavailable" body="The requested player could not be found in the current provider response."/>}
-  </div>;
-}
-function TeamsPage() {
-  const query = useGetNbaTeams();
-  const [conference, setConference] = useState('All');
-  const teams = (query.data || []).filter((t: any) => conference === 'All' || t.conference === conference);
-  return <div className="page-content">
-    <PageHeading eyebrow="LEAGUE DIRECTORY" title="Thirty team identities." subtitle="Team hubs for roster context and environment metrics."/>
-    <DataNotice fallback="The team directory is reference data; live rosters and statistics require a verified NBA provider."/>
-    <div className="directory-tools team-tools"><div className="market-tabs compact-tabs">{['All', 'East', 'West'].map((c) => <button key={c} onClick={() => setConference(c)} className={conference === c ? 'market-tab selected' : 'market-tab'}>{c === 'All' ? 'All teams' : c}</button>)}</div><span className="count-label">{teams.length} teams</span></div>
-    {query.isLoading ? <LoadingPanel rows={7}/> : query.isError ? <ErrorState retry={() => void query.refetch()}/> : teams.length ? <div className="team-grid">{teams.map((t: any) => <Link href={`/teams/${t.id}`} className="team-card" key={t.id}><span className="team-badge" style={{ '--team-color': t.color || '#d44b38' } as CSSProperties}>{t.abbreviation}</span><div><strong>{t.city} {t.name}</strong><span>{t.conference} · {t.division}</span></div><ArrowRight size={15}/></Link>)}</div> : <EmptyState title="No teams available" body="The team directory could not be populated by the data provider."/>}
-  </div>;
-}
-function TeamProfilePage() {
-  const [path] = useLocation();
-  const id = path.split('/').filter(Boolean).slice(-1)[0] || '';
-  const query = useGetNbaTeam(id, { query: { enabled: !!id, queryKey: getGetNbaTeamQueryKey(id) } });
-  const d = query.data;
-  return <div className="page-content">
-    {query.isLoading ? <LoadingPanel rows={6}/> : query.isError ? <ErrorState retry={() => void query.refetch()}/> : d ? <>
-      <PageHeading eyebrow={`${d.team.conference.toUpperCase()} · ${d.team.division.toUpperCase()}`} title={`${d.team.city} ${d.team.name}`} subtitle="Team profile and roster context." action={<Link href="/teams" className="button-secondary">All teams <ArrowRight size={15}/></Link>}/>
-      <DataNotice status={d.dataStatus}/>
-      <div className="team-hero" style={{ '--team-color': d.team.color || '#d44b38' } as CSSProperties}><span className="team-large-mark">{d.team.abbreviation}</span><div><span className="eyebrow"><span/> TEAM SNAPSHOT</span><h2>{d.wins ?? '—'}–{d.losses ?? '—'}</h2><p>Win–loss record · {d.team.conference} conference</p></div><div className="team-profile-metrics"><Metric label="PACE" value={d.pace == null ? '—' : d.pace.toFixed(1)}/><Metric label="OFF. RATING" value={d.offensiveRating == null ? '—' : d.offensiveRating.toFixed(1)}/><Metric label="DEF. RATING" value={d.defensiveRating == null ? '—' : d.defensiveRating.toFixed(1)}/></div></div>
-      <Panel><PanelTitle meta={<span className="mini-mode">{d.roster.length ? `${d.roster.length} PLAYERS` : 'ROSTER UNAVAILABLE'}</span>}>Roster</PanelTitle>{d.roster.length ? <div className="player-grid">{d.roster.map((p: any) => <Link href={`/players/${p.id}`} className="player-card" key={p.id}><PlayerAvatar name={p.name} image={p.headshotUrl}/><div className="player-card-info"><strong>{p.name}</strong><span>{p.position} {p.jerseyNumber ? `· #${p.jerseyNumber}` : ''}</span><div className="player-mini-stats"><b>{p.points.toFixed(1)}<small> PTS</small></b><b>{p.rebounds.toFixed(1)}<small> REB</small></b><b>{p.assists.toFixed(1)}<small> AST</small></b></div></div><ArrowRight size={15}/></Link>)}</div> : <EmptyState title="Roster unavailable" body="No roster members were included in the team response."/>}</Panel>
-    </> : <EmptyState title="Team profile unavailable" body="The requested team could not be found in the current provider response."/>}
-  </div>;
-}
-function WatchlistPage() {
-  const [ids, setIds] = useStoredList<string>('nba-snipes-watchlist-v2');
-  const [savedPicks, setSavedPicks] = useStoredList<any>('nba-snipes-slip-v2');
-  const snipesQuery = useGetNbaSnipes();
-  const propsQuery = useGetNbaProps();
-  const items = [...(snipesQuery.data || []), ...(propsQuery.data || [])].filter((p: any) => ids.includes(p.id));
-  return <div className="page-content">
-    <PageHeading eyebrow="YOUR COURTSIDE LIST" title="Keep an eye on it." subtitle="Saved players and props live in this browser only." action={<button className="button-secondary" onClick={() => { setIds([]); setSavedPicks([]); }} disabled={!ids.length && !savedPicks.length}><X size={15}/> Clear saved</button>}/>
-    <DataNotice fallback="This list is stored locally. Only currently verified market records can appear here."/>
-    <div className="watch-count-row"><div><strong>{ids.length}</strong><span>saved market signals</span></div><div><strong>{savedPicks.length}</strong><span>slip legs in browser</span></div><Link href="/props" className="text-link">Browse prop board <ArrowRight size={14}/></Link></div>
-    <Panel><PanelTitle meta={<span className="mini-mode">LOCAL BROWSER STORAGE</span>}>Saved signals</PanelTitle>
-       {snipesQuery.isLoading || propsQuery.isLoading ? <LoadingPanel rows={3}/> : snipesQuery.isError && propsQuery.isError ? <ErrorState retry={() => { void snipesQuery.refetch(); void propsQuery.refetch(); }}/> : items.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>PLAYER</th><th>MARKET</th><th>LINE</th><th>PROJECTION</th><th>LINE GAP</th><th></th></tr></thead><tbody>{items.map((p: any) => <tr key={p.id}><td><strong>{p.playerName}</strong><small className="table-sub">{p.team} vs {p.opponent}</small></td><td>{marketLabel(p.market)}</td><td>{fmtLine(p.line)}</td><td className="model-value">{fmtLine(p.projection)}</td><td className="edge-value">{fmtDelta(p.edge)}</td><td><button className="icon-button" aria-label="Remove saved prop" onClick={() => setIds(ids.filter((id) => id !== p.id))}><X size={15}/></button></td></tr>)}</tbody></table></div> : <EmptyState title="Nothing on your watchlist yet" body="Save a player prop or signal from the board. Items are saved only in this browser."/>}
-    </Panel>
-    {!!savedPicks.length && <Panel><PanelTitle>Slip builder legs</PanelTitle><div className="pick-candidates">{savedPicks.map((p: any) => <div className="pick-candidate" key={p.id}><div><strong>{p.playerName}</strong><small>{marketLabel(p.market)} {p.side} {fmtLine(p.line)}</small></div><button className="text-link" onClick={() => setSavedPicks(savedPicks.filter((s: any) => s.id !== p.id))}>Remove</button></div>)}</div><Link href="/slip-builder" className="button-primary inline-cta">Continue building <ArrowRight size={15}/></Link></Panel>}
-  </div>;
-}
-function AuditPage() {
-  const query = useGetNbaAudit();
-  const rows = query.data || [];
-  return <div className="page-content">
-    <PageHeading eyebrow="TRANSPARENT BY DESIGN" title="Inside the model." subtitle="Review the inputs and adjustments attached to each projection."/>
-    <DataNotice status={rows[0] ? { mode: rows[0].status === 'verified' ? 'live' : 'unavailable', provider: 'Model audit', message: rows[0].status === 'verified' ? 'Verified record from provider.' : 'Unverified model audit record withheld.' } : undefined} fallback="Verified model audit records appear after real projections are generated."/>
-    <div className="audit-intro"><div className="audit-icon"><Database size={18}/></div><div><strong>Inspectable, not inscrutable.</strong><p>Each record lists the projection inputs and adjustment notes returned with the audit endpoint. Missing details stay missing.</p></div><span className="audit-count">{rows.length || '—'} RECORDS</span></div>
-    {query.isLoading ? <LoadingPanel rows={6}/> : query.isError ? <ErrorState retry={() => void query.refetch()}/> : rows.length ? <div className="audit-list">{rows.map((r: any) => <details className="audit-record" key={r.id}><summary><div className="audit-player"><span className="audit-rank"><Database size={15}/></span><div><strong>{r.playerName}</strong><small>{r.team} · {marketLabel(r.market)}</small></div></div><div className="audit-proj"><span>PROJECTION</span><strong>{fmtLine(r.projection)}</strong></div><span className="audit-date">{new Date(r.recordedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span><StatPill tone={r.status === 'verified' ? 'good' : 'warn'}>{r.status}</StatPill><ChevronDown size={16}/></summary><div className="audit-details"><div><h3>Data inputs</h3>{r.dataInputs?.length ? r.dataInputs.map((item: string, i: number) => <p key={i}><Check size={13}/>{item}</p>) : <p className="empty-detail">No inputs recorded.</p>}</div><div><h3>Model adjustments</h3>{r.adjustments?.length ? r.adjustments.map((item: string, i: number) => <p key={i}><ArrowUpRight size={13}/>{item}</p>) : <p className="empty-detail">No adjustments recorded.</p>}</div></div></details>)}</div> : <EmptyState title="No audit records returned" body="The audit endpoint has no records available. We will not fabricate model inputs or adjustment history."/>}
-  </div>;
-}
-function PerformancePage() {
-  const query = useGetNbaModelPerformance();
-  const rows = query.data || [];
-  return <div className="page-content">
-    <PageHeading eyebrow="MODEL TRACK RECORD" title="Measure the model." subtitle="Market-level tracking metrics with verified history and status in view."/>
-    <DataNotice fallback="Tracking metrics appear only after model outputs are matched against verified historical outcomes."/>
-    <div className="performance-banner"><div className="performance-mark"><BarChart3 size={19}/></div><div><strong>Performance is a process, not a promise.</strong><p>Model results will remain blank until predictions and completed game outcomes can be validated.</p></div><ShieldAlert size={19}/></div>
-    {query.isLoading ? <LoadingPanel rows={6}/> : query.isError ? <ErrorState retry={() => void query.refetch()}/> : rows.length ? <Panel className="performance-panel"><div className="table-wrap"><table className="data-table performance-table"><thead><tr><th>MARKET</th><th>SAMPLE SIZE</th><th>HIT RATE</th><th>AVG. ERROR</th><th>ROI</th><th>TRACKING</th></tr></thead><tbody>{rows.map((r: any) => <tr key={r.market}><td><div className="market-name"><span className="market-bullet"></span><strong>{marketLabel(r.market)}</strong></div></td><td className="mono">{r.sampleSize.toLocaleString()}</td><td>{r.hitRate == null ? '—' : <><strong>{fmtProbability(r.hitRate)}</strong><div className="performance-track"><span style={{ width: `${Math.min(100, Math.max(0, r.hitRate * 100))}%` }}/></div></>}</td><td className="mono">{r.averageError == null ? '—' : r.averageError.toFixed(2)}</td><td className={r.roi != null && r.roi > 0 ? 'edge-value' : ''}>{r.roi == null ? '—' : `${r.roi > 0 ? '+' : ''}${r.roi.toFixed(1)}%`}</td><td><StatPill tone={r.status === 'verified' ? 'good' : r.status === 'tracking' ? 'neutral' : 'warn'}>{r.status}</StatPill></td></tr>)}</tbody></table></div></Panel> : <EmptyState title="No verified tracking history" body="Historical outcomes have not been connected, so no hit rates or return estimates are displayed."/>}
-    <div className="method-note"><span className="method-dot"></span><span>Metrics describe only the tracked historical records. They do not guarantee future outcomes or imply independent verification unless labeled verified.</span></div>
-  </div>;
+  const [watchlist, toggleWatch] = useWatchlist();
+  const query = useGetProps(market === 'all' ? undefined : { market }, { queryKey: getPropsQueryKey() });
+  const rows = query.data ?? [];
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Player markets / evidence"
+        title="Prop board"
+        copy="Live player-prop lines from DunkAPI paired with the RimRaider projection for the same market. Prices come straight from the sportsbooks; projections and edges come from the model."
+        action={
+          <Link href="/picks" className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary">
+            Radar picks <ArrowUpRight size={14} />
+          </Link>
+        }
+      />
+      <div className="mb-5 flex gap-2 overflow-x-auto pb-1">
+        {markets.map((item) => (
+          <button
+            key={item}
+            onClick={() => setMarket(item)}
+            className={`whitespace-nowrap rounded-lg border px-3 py-2 text-[11px] font-semibold capitalize ${
+              market === item ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground'
+            }`}
+          >
+            {item === 'all' ? 'All markets' : item}
+          </button>
+        ))}
+      </div>
+      <QueryState
+        loading={query.isLoading}
+        error={query.isError}
+        errorMessage={query.error?.message}
+        onRetry={() => void query.refetch()}
+      >
+        <div className="space-y-2">
+          {rows.map((prop) => (
+            <PropCard key={prop.id} prop={prop} watchlist={watchlist} onWatch={toggleWatch} />
+          ))}
+        </div>
+      </QueryState>
+      {!query.isLoading && !query.isError && rows.length === 0 ? (
+        <div className="mt-4">
+          <EmptyState
+            icon={Info}
+            title="No player props to show"
+            body="The board lists only the markets the model has analyzed, so it stays empty until DunkAPI returns prop lines with recent player form. Schedules, scores and injuries remain live on the other pages."
+          />
+        </div>
+      ) : null}
+    </>
+  );
 }
 
-function RoutedErrorBoundary({ children }: { children: ReactNode }) {
+function MatchupsPage() {
+  const query = useGetMatchups({ queryKey: getMatchupsQueryKey() });
+  const rows: Matchup[] = query.data ?? [];
+  const todayKey = new Date().toDateString();
+  const showingFuture = rows.length > 0 && rows.every((row) => new Date(row.game.date).toDateString() !== todayKey);
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Game lab / environment"
+        title="Matchups"
+        copy="Every game ESPN reports for the current slate, with live scores and any verified game line. Projected pace and ratings stay blank until a model is connected."
+      />
+      {showingFuture ? (
+        <div className="mb-4 rounded-lg border border-secondary/25 bg-secondary/5 px-4 py-3 text-xs text-secondary">
+          No games are scheduled today. Showing the next slate on the ESPN schedule.
+        </div>
+      ) : null}
+      <QueryState
+        loading={query.isLoading}
+        error={query.isError}
+        errorMessage={query.error?.message}
+        empty={!query.isLoading && !query.isError && rows.length === 0}
+        onRetry={() => void query.refetch()}
+      >
+        <div className="grid gap-4 [&>*]:min-w-0 xl:grid-cols-2">
+          {rows.map(({ game, projectedTotal, notes }) => (
+            <div key={game.id} className="rounded-xl border border-border bg-card/70 p-5">
+              <div className="mb-5 flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-[.14em] text-muted-foreground">
+                  {shortDate(game.date)} · {gameTime(game.tipoff)}
+                </span>
+                <span className={`rounded-full px-2 py-1 text-[9px] uppercase ${game.status === 'live' ? 'bg-accent/10 text-accent' : 'bg-muted text-muted-foreground'}`}>
+                  {game.status}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex flex-1 flex-col items-center gap-2">
+                  <TeamCrest team={game.awayTeam} size="lg" />
+                  <p className="text-sm font-bold">{game.awayTeam.name}</p>
+                  <p className="font-mono text-[10px] uppercase text-muted-foreground">away</p>
+                </div>
+                <ScoreLine game={game} />
+                <div className="flex flex-1 flex-col items-center gap-2">
+                  <TeamCrest team={game.homeTeam} size="lg" />
+                  <p className="text-sm font-bold">{game.homeTeam.name}</p>
+                  <p className="font-mono text-[10px] uppercase text-muted-foreground">home</p>
+                </div>
+              </div>
+              <div className="mt-5 grid grid-cols-2 gap-2 border-t border-border pt-4 text-center">
+                <div>
+                  <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Venue</p>
+                  <p className="mt-1 text-xs font-semibold">{game.venue ?? 'unavailable'}</p>
+                </div>
+                <div>
+                  <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Posted total</p>
+                  <p className="mt-1 text-xs font-semibold">{projectedTotal !== null ? fmt(projectedTotal) : 'not posted'}</p>
+                </div>
+              </div>
+              {notes.length > 0 ? (
+                <ul className="mt-3 space-y-1 border-t border-border/60 pt-3 text-[10px] text-muted-foreground">
+                  {notes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              ) : null}
+              <Link href={`/games/${game.id}`} className="mt-3 inline-flex items-center gap-1 text-[11px] font-semibold text-primary">
+                Game detail <ChevronRight size={12} />
+              </Link>
+            </div>
+          ))}
+        </div>
+      </QueryState>
+    </>
+  );
+}
+
+function PlayerCard({ player }: { player: Player }) {
+  return (
+    <Link href={`/players/${player.id}`} className="group flex items-center gap-3 rounded-xl border border-border bg-card/70 p-4 hover:border-primary/40">
+      <PlayerImage player={player} size="md" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-bold group-hover:text-primary">{player.name}</p>
+        <p className="mt-1 text-[10px] text-muted-foreground">
+          {player.team.name} · {player.position}
+          {player.jerseyNumber ? ` · #${player.jerseyNumber}` : ''}
+        </p>
+      </div>
+      {player.points !== null ? (
+        <div className="text-right">
+          <p className="font-mono text-sm">{fmt(player.points)}</p>
+          <p className="text-[9px] uppercase text-muted-foreground">pts</p>
+        </div>
+      ) : null}
+      <ChevronRight size={15} className="text-muted-foreground group-hover:text-primary" />
+    </Link>
+  );
+}
+
+function PlayersPage() {
+  const [search, setSearch] = useState('');
+  const params = search ? { search } : undefined;
+  const query = useGetPlayers(params, { queryKey: getPlayersQueryKey(params) });
+  const rows = query.data ?? [];
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Player index / searchable"
+        title="Players"
+        copy="Current NBA rosters from ESPN. Season averages appear when the provider publishes them for that athlete."
+        action={
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-2.5 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search player"
+              className="w-52 rounded-lg border border-border bg-card py-2 pl-9 pr-3 text-xs outline-none placeholder:text-muted-foreground focus:border-primary/60"
+            />
+          </div>
+        }
+      />
+      <QueryState
+        loading={query.isLoading}
+        error={query.isError}
+        errorMessage={query.error?.message}
+        empty={!query.isLoading && !query.isError && rows.length === 0}
+        onRetry={() => void query.refetch()}
+      >
+        <div className="grid gap-3 [&>*]:min-w-0 sm:grid-cols-2 xl:grid-cols-3">
+          {rows.map((player) => (
+            <PlayerCard key={player.id} player={player} />
+          ))}
+        </div>
+      </QueryState>
+    </>
+  );
+}
+
+function PlayerDetailPage() {
+  const params = useParams<{ playerId: string }>();
+  const query = useGetPlayer(params.playerId || '', { queryKey: getPlayerQueryKey(params.playerId || '') });
+  const detail: PlayerDetail | undefined = query.data;
+  const player = detail?.player;
+  const stats = player
+    ? [
+        { label: 'PTS', value: player.points },
+        { label: 'REB', value: player.rebounds },
+        { label: 'AST', value: player.assists },
+        { label: '3PM', value: player.threes },
+        { label: 'STL', value: player.steals },
+        { label: 'BLK', value: player.blocks },
+        { label: 'TO', value: player.turnovers },
+        { label: 'MIN', value: player.minutes },
+      ]
+    : [];
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Player detail / evidence"
+        title={player?.name ?? 'Player detail'}
+        copy={player ? `${player.team.name} · ${player.position}. ${detail?.seasonLabel ? `Season ${detail.seasonLabel}.` : 'Season averages unavailable.'}` : 'Loading the player record without filling missing fields.'}
+        action={
+          player ? (
+            <Link href={`/teams/${player.team.id}`} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:border-primary/40">
+              Open team <ArrowUpRight size={14} />
+            </Link>
+          ) : undefined
+        }
+      />
+      <QueryState
+        loading={query.isLoading}
+        error={query.isError}
+        errorMessage={query.error?.message}
+        empty={!query.isLoading && !query.isError && !player}
+        onRetry={() => void query.refetch()}
+      >
+        {player ? (
+          <div className="space-y-6">
+            <section className="rounded-xl border border-primary/25 bg-card/70 p-5 md:p-7">
+              <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-center">
+                <PlayerImage player={player} size="hero" />
+                <div>
+                  <div className="mb-2 flex items-center gap-2">
+                    <TeamCrest team={player.team} size="xs" />
+                    <p className="font-mono text-[10px] uppercase tracking-[.16em] text-primary">
+                      {player.team.abbreviation} / {player.position}
+                    </p>
+                  </div>
+                  <h2 className="text-3xl font-bold tracking-[-.04em]">{player.name}</h2>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    #{player.jerseyNumber ?? '—'} · {player.status} · {player.headshotUrl ? 'provider headshot' : 'headshot unavailable'}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-6 grid grid-cols-4 gap-2 border-t border-border pt-4 md:grid-cols-8">
+                {stats.map((stat) => (
+                  <div key={stat.label} className="text-center">
+                    <p className="font-mono text-lg font-bold">{fmt(stat.value)}</p>
+                    <p className="text-[9px] uppercase tracking-wider text-muted-foreground">{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-border bg-card/70 p-5 md:p-6">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="font-bold">Recent games</h2>
+                <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {(detail?.recentGames ?? []).length} rows
+                </span>
+              </div>
+              {(detail?.recentGames ?? []).length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[620px] text-left text-xs">
+                    <thead className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+                      <tr>
+                        {['Date', 'Opponent', 'MIN', 'PTS', 'REB', 'AST', '3PM', 'STL', 'BLK', 'TO'].map((header) => (
+                          <th key={header} className="border-b border-border px-3 py-3">{header}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(detail?.recentGames ?? []).map((game, index) => (
+                        <tr key={`${game.date}-${index}`} className="border-b border-border/60 last:border-0">
+                          <td className="px-3 py-3">{shortDate(game.date)}</td>
+                          <td className="px-3 py-3 font-semibold">{game.opponent}</td>
+                          <td className="px-3 py-3 font-mono">{fmt(game.minutes)}</td>
+                          <td className="px-3 py-3 font-mono">{game.points}</td>
+                          <td className="px-3 py-3 font-mono">{game.rebounds}</td>
+                          <td className="px-3 py-3 font-mono">{game.assists}</td>
+                          <td className="px-3 py-3 font-mono">{game.threes}</td>
+                          <td className="px-3 py-3 font-mono">{game.steals}</td>
+                          <td className="px-3 py-3 font-mono">{game.blocks}</td>
+                          <td className="px-3 py-3 font-mono">{game.turnovers}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <EmptyState title="No game log" body="ESPN's roster and averages feed does not include a play-by-play game log here." />
+              )}
+            </section>
+          </div>
+        ) : null}
+      </QueryState>
+    </>
+  );
+}
+
+function TeamsPage() {
+  const query = useGetTeams({ queryKey: getTeamsQueryKey() });
+  const rows = query.data ?? [];
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Team index / pressure map"
+        title="Teams"
+        copy="All 30 NBA teams with conference, division and provider identity."
+      />
+      <QueryState
+        loading={query.isLoading}
+        error={query.isError}
+        errorMessage={query.error?.message}
+        empty={!query.isLoading && !query.isError && rows.length === 0}
+        onRetry={() => void query.refetch()}
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {rows.map((team) => (
+            <Link
+              key={team.id}
+              href={`/teams/${team.id}`}
+              className="group rounded-xl border border-border bg-card/70 p-4 hover:border-accent/40"
+            >
+              <div className="flex items-center gap-3">
+                <TeamCrest team={team} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold group-hover:text-primary">{team.name}</p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    {team.conference} · {team.division}
+                  </p>
+                </div>
+                <ChevronRight size={15} className="text-muted-foreground group-hover:text-accent" />
+              </div>
+              <div className="mt-4 flex items-center justify-between border-t border-border pt-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                <span>{team.abbreviation}</span>
+                <span>{team.logoUrl ? 'identity ready' : 'identity partial'}</span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </QueryState>
+    </>
+  );
+}
+
+function TeamDetailPage() {
+  const params = useParams<{ teamId: string }>();
+  const query = useGetTeam(params.teamId || '', { queryKey: getTeamQueryKey(params.teamId || '') });
+  const detail: TeamDetail | undefined = query.data;
+  const team = detail?.team;
+  const record = detail && (detail.wins !== null || detail.losses !== null) ? `${detail.wins ?? 0}-${detail.losses ?? 0}` : '—';
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Team detail / profile"
+        title={team?.name ?? 'Team detail'}
+        copy={team ? `${team.abbreviation} · ${team.conference} · ${team.division}.` : 'Loading team profile.'}
+        action={
+          <Link href="/players" className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:border-primary/40">
+            View player index
+          </Link>
+        }
+      />
+      <QueryState
+        loading={query.isLoading}
+        error={query.isError}
+        errorMessage={query.error?.message}
+        empty={!query.isLoading && !query.isError && !team}
+        onRetry={() => void query.refetch()}
+      >
+        {team && detail ? (
+          <div className="space-y-6">
+            <section className="relative overflow-hidden rounded-xl border border-border bg-card/70 p-5 md:p-7">
+              <div
+                className="absolute inset-y-0 right-0 w-2/3 opacity-30"
+                style={{ background: `radial-gradient(circle at 70% 45%, ${team.color}55, transparent 58%)` }}
+              />
+              <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center">
+                <TeamCrest team={team} size="hero" />
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-primary">{team.abbreviation} / team profile</p>
+                  <h2 className="mt-2 text-3xl font-bold tracking-[-.04em]">
+                    {team.city} {team.name}
+                  </h2>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {team.conference} · {team.division} · record {record}
+                    {team.logoUrl ? '' : ' · provider crest unavailable'}
+                  </p>
+                </div>
+              </div>
+              <div className="relative mt-7 grid gap-3 sm:grid-cols-3">
+                {[
+                  ['Record', record],
+                  ['Points for / game', detail.offensiveRating !== null ? fmt(detail.offensiveRating) : '—'],
+                  ['Points against / game', detail.defensiveRating !== null ? fmt(detail.defensiveRating) : '—'],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-lg bg-muted/60 p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
+                    <p className="mt-1 font-mono text-lg font-bold">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-border bg-card/70 p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="font-bold">Roster</h2>
+                <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {detail.roster.length} players
+                </span>
+              </div>
+              {detail.roster.length > 0 ? (
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {detail.roster.map((player) => (
+                    <PlayerCard key={player.id} player={player} />
+                  ))}
+                </div>
+              ) : (
+                <EmptyState title="Roster unavailable" body="The provider returned no roster for this team." />
+              )}
+            </section>
+          </div>
+        ) : null}
+      </QueryState>
+    </>
+  );
+}
+
+function WatchlistPage() {
+  const [watchlist, toggleWatch] = useWatchlist();
+  const query = useGetPlayers(undefined, { queryKey: getPlayersQueryKey() });
+  const players = (query.data ?? []).filter((player) => watchlist.includes(player.id));
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Browser local / personal board"
+        title="Watchlist"
+        copy="A private browser-persisted shortlist. Nothing syncs to the server, and removing a name is immediate."
+        action={
+          watchlist.length > 0 ? (
+            <button
+              onClick={() => watchlist.forEach((id) => toggleWatch(id))}
+              className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:border-destructive/40 hover:text-destructive"
+            >
+              <X size={14} /> Clear all
+            </button>
+          ) : undefined
+        }
+      />
+      <QueryState
+        loading={query.isLoading}
+        error={query.isError}
+        errorMessage={query.error?.message}
+        empty={!query.isLoading && !query.isError && players.length === 0}
+        onRetry={() => void query.refetch()}
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {players.map((player) => (
+            <div key={player.id} className="relative">
+              <PlayerCard player={player} />
+              <button
+                onClick={() => toggleWatch(player.id)}
+                className="absolute right-3 top-3 rounded-md p-1 text-primary hover:bg-primary/10"
+              >
+                <Star size={14} fill="currentColor" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </QueryState>
+    </>
+  );
+}
+
+function PerformanceRow({ metric }: { metric: ModelPerformance }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="w-20 text-xs font-semibold capitalize">{metric.market}</div>
+      <div className="h-2 flex-1 rounded-full bg-muted">
+        <div className="h-full rounded-full bg-secondary" style={{ width: `${Math.min((metric.hitRate ?? 0) * 100, 100)}%` }} />
+      </div>
+      <div className="w-12 text-right font-mono text-xs text-secondary">{pct(metric.hitRate)}</div>
+      <div className="w-16 text-right text-[10px] text-muted-foreground">{metric.sampleSize} n</div>
+    </div>
+  );
+}
+
+function AuditPage() {
+  const audit = useGetAudit({ queryKey: getAuditQueryKey() });
+  const performance = useGetModelPerformance({ queryKey: getModelPerformanceQueryKey() });
+  const rows: AuditRecord[] = audit.data ?? [];
+  const metrics: ModelPerformance[] = performance.data ?? [];
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Transparent history / no hindsight"
+        title="Audit trail"
+        copy="Immutable prediction metadata and aggregate model performance. Records appear only after a model produces and scores picks."
+        action={
+          <Link href="/admin" className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:border-primary/40">
+            <Database size={14} /> Data health
+          </Link>
+        }
+      />
+      <div className="mb-6 grid gap-3 sm:grid-cols-3">
+        {metrics.slice(0, 3).map((metric) => (
+          <StatCard key={metric.market} label={`${metric.market} hit rate`} value={pct(metric.hitRate)} note={`${metric.sampleSize} scored records`} accent="violet" icon={TrendingUp} />
+        ))}
+      </div>
+      <section className="rounded-xl border border-border bg-card/70 p-5 md:p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-bold">Prediction records</h2>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{rows.length} visible</span>
+        </div>
+        <QueryState
+          loading={audit.isLoading}
+          error={audit.isError}
+          errorMessage={audit.error?.message}
+          empty={!audit.isLoading && !audit.isError && rows.length === 0}
+          onRetry={() => void audit.refetch()}
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left text-xs">
+              <thead className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  {['Recorded', 'Player', 'Team', 'Market', 'Projection', 'Status'].map((header) => (
+                    <th key={header} className="border-b border-border px-3 py-3">{header}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((record) => (
+                  <tr key={record.id} className="border-b border-border/60 last:border-0">
+                    <td className="px-3 py-3 text-muted-foreground">{shortDate(record.recordedAt)}</td>
+                    <td className="px-3 py-3 font-semibold">{record.playerName}</td>
+                    <td className="px-3 py-3">{record.team}</td>
+                    <td className="px-3 py-3 capitalize">{record.market}</td>
+                    <td className="px-3 py-3 font-mono">{fmt(record.projection)}</td>
+                    <td className="px-3 py-3">
+                      <span className="rounded-full border border-muted bg-muted px-2 py-1 text-[9px] uppercase text-muted-foreground">
+                        {record.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </QueryState>
+        {metrics.length > 0 ? (
+          <div className="mt-5 space-y-3">
+            {metrics.map((metric) => (
+              <PerformanceRow key={metric.market} metric={metric} />
+            ))}
+          </div>
+        ) : null}
+      </section>
+    </>
+  );
+}
+
+function AdminPage() {
+  const health = useHealthCheck();
+  const dataHealth = useDataHealth({ queryKey: getDataHealthQueryKey() });
+  const { sync, isSyncing, result, error } = useSyncNbaData();
+  const [message, setMessage] = useState<string | null>(null);
+
+  const runSync = async () => {
+    await sync();
+    await Promise.all([health.refetch(), dataHealth.refetch()]);
+  };
+
+  const runChecks = async () => {
+    setMessage(null);
+    await Promise.all([health.refetch(), dataHealth.refetch()]);
+    setMessage('Checks complete — the API is reachable. No import was run.');
+  };
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Operations / provider sync"
+        title="Data health"
+        copy="Inspect the live ESPN connection, the last successful import, and which data layers are still unavailable."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={runSync}
+              disabled={isSyncing}
+              className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+              {isSyncing ? 'Syncing ESPN data' : 'Sync ESPN data'}
+            </button>
+            <button
+              onClick={runChecks}
+              className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:border-primary/40 hover:text-primary"
+            >
+              <RefreshCw size={14} /> Run checks
+            </button>
+          </div>
+        }
+      />
+
+      {result ? (
+        <div className={`mb-5 rounded-lg border px-4 py-3 text-xs ${result.ok ? 'border-primary/25 bg-primary/5 text-primary' : 'border-destructive/25 bg-destructive/5 text-destructive'}`}>
+          {result.message}
+        </div>
+      ) : null}
+      {error ? (
+        <div className="mb-5 rounded-lg border border-destructive/25 bg-destructive/5 px-4 py-3 text-xs text-destructive">
+          Sync failed: {error.message}
+        </div>
+      ) : null}
+      {message ? <div className="mb-5 rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-xs text-primary">{message}</div> : null}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="rounded-xl border border-border bg-card/70 p-5 md:p-6">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="rounded-lg bg-primary/10 p-2 text-primary"><Activity size={17} /></div>
+            <div>
+              <h2 className="font-bold">API heartbeat</h2>
+              <p className="text-xs text-muted-foreground">Local server reachability</p>
+            </div>
+            <span className={`ml-auto rounded-full border px-2 py-1 text-[9px] uppercase ${health.isError ? 'border-destructive/30 text-destructive' : 'border-primary/30 text-primary'}`}>
+              {health.isLoading ? 'checking' : health.isError ? 'error' : health.data?.status ?? 'ready'}
+            </span>
+          </div>
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between border-b border-border/70 pb-3">
+              <span className="text-muted-foreground">Endpoint</span>
+              <span className="font-mono text-xs">/api/healthz</span>
+            </div>
+            <div className="flex justify-between border-b border-border/70 pb-3">
+              <span className="text-muted-foreground">Provider</span>
+              <span className="font-mono text-xs">{dataHealth.data?.provider ?? 'ESPN'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Last successful sync</span>
+              <span className="font-mono text-xs">
+                {dataHealth.data?.lastSuccessfulSync ? shortDate(dataHealth.data.lastSuccessfulSync) : 'never'}
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-border bg-card/70 p-5 md:p-6">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="rounded-lg bg-secondary/10 p-2 text-secondary"><Database size={17} /></div>
+            <div>
+              <h2 className="font-bold">Import status</h2>
+              <p className="text-xs text-muted-foreground">Indexed entities from provider</p>
+            </div>
+          </div>
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between border-b border-border/70 pb-3">
+              <span className="text-muted-foreground">Teams</span>
+              <span className="font-mono text-xs">{dataHealth.data?.teamsImported ?? '—'}</span>
+            </div>
+            <div className="flex justify-between border-b border-border/70 pb-3">
+              <span className="text-muted-foreground">Games on slate</span>
+              <span className="font-mono text-xs">{dataHealth.data?.gamesImported ?? '—'}</span>
+            </div>
+            <div className="flex justify-between border-b border-border/70 pb-3">
+              <span className="text-muted-foreground">Roster players</span>
+              <span className="font-mono text-xs">{dataHealth.data?.playersImported ?? '—'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Connection</span>
+              <span className="font-mono text-xs">{dataHealth.data?.connection ?? 'unknown'}</span>
+            </div>
+          </div>
+          {dataHealth.data?.errors?.length ? (
+            <ul className="mt-4 space-y-1 border-t border-border/70 pt-3 text-[10px] text-destructive">
+              {dataHealth.data.errors.map((entry) => (
+                <li key={entry}>{entry}</li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      </div>
+
+      <section className="mt-4 rounded-xl border border-border bg-card/70 p-5 md:p-6">
+        <div className="mb-4 flex items-center gap-3">
+          <div className="rounded-lg bg-accent/10 p-2 text-accent"><CircleAlert size={17} /></div>
+          <div>
+            <h2 className="font-bold">Data layers</h2>
+            <p className="text-xs text-muted-foreground">What this build can and cannot show</p>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {[
+            ['Schedule & scores', 'Live · ESPN scoreboard', true],
+            ['Teams & rosters', 'Live · ESPN teams and rosters', true],
+            ['Injuries', 'Live · ESPN injury report', true],
+            ['Game lines (ML/spread/total)', 'Live · ESPN sportsbook partners', true],
+            ['Player props', 'Not connected', false],
+            ['Projection model', 'Not connected', false],
+          ].map(([label, detail, available]) => (
+            <div key={String(label)} className="flex items-center justify-between rounded-lg border border-border/70 bg-muted/30 p-3">
+              <div>
+                <p className="text-xs font-semibold">{label}</p>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">{detail}</p>
+              </div>
+              <span className={`h-2 w-2 rounded-full ${available ? 'bg-primary' : 'bg-muted-foreground'}`} />
+            </div>
+          ))}
+        </div>
+      </section>
+    </>
+  );
+}
+
+function GameDetailRoute() {
+  const params = useParams<{ gameId: string }>();
+  const query = useGetGame(params.gameId || '', { queryKey: getGameQueryKey(params.gameId || '') });
+  const odds = useGetOdds({ queryKey: getOddsQueryKey() });
+  const game = query.data;
+  const line = odds.data?.games.find((entry) => entry.game.id === game?.id);
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Game detail / environment"
+        title={game ? `${game.awayTeam.abbreviation} at ${game.homeTeam.abbreviation}` : 'Game detail'}
+        copy={game ? `${shortDate(game.date)} · ${gameTime(game.tipoff)} · ${game.venue ?? 'venue unavailable'}` : 'Loading game record.'}
+      />
+      <QueryState
+        loading={query.isLoading}
+        error={query.isError}
+        errorMessage={query.error?.message}
+        empty={!query.isLoading && !query.isError && !game}
+        onRetry={() => void query.refetch()}
+      >
+        {game ? (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-border bg-card/70 p-6">
+              <div className="flex items-start justify-center gap-6">
+                <div className="flex flex-col items-center gap-2">
+                  <TeamCrest team={game.awayTeam} size="lg" />
+                  <p className="text-center text-sm font-bold">{game.awayTeam.name}</p>
+                  <p className="font-mono text-[10px] uppercase text-muted-foreground">away</p>
+                </div>
+                <div className="mt-6"><ScoreLine game={game} /></div>
+                <div className="flex flex-col items-center gap-2">
+                  <TeamCrest team={game.homeTeam} size="lg" />
+                  <p className="text-center text-sm font-bold">{game.homeTeam.name}</p>
+                  <p className="font-mono text-[10px] uppercase text-muted-foreground">home</p>
+                </div>
+              </div>
+              <div className="mt-6 grid grid-cols-2 gap-3 border-t border-border pt-4 md:grid-cols-4">
+                <div className="rounded-lg bg-muted/60 p-3 text-center">
+                  <p className="font-mono text-[9px] uppercase text-muted-foreground">Status</p>
+                  <p className="mt-1 text-sm font-bold capitalize">{game.status}</p>
+                </div>
+                <div className="rounded-lg bg-muted/60 p-3 text-center">
+                  <p className="font-mono text-[9px] uppercase text-muted-foreground">Venue</p>
+                  <p className="mt-1 text-sm font-bold">{game.venue ?? '—'}</p>
+                </div>
+                <div className="rounded-lg bg-muted/60 p-3 text-center">
+                  <p className="font-mono text-[9px] uppercase text-muted-foreground">Posted total</p>
+                  <p className="mt-1 text-sm font-bold">
+                    {line?.sportsbooks.flatMap((book) => book.markets).find((market) => market.key === 'total')?.outcomes[0]?.point ?? '—'}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-muted/60 p-3 text-center">
+                  <p className="font-mono text-[9px] uppercase text-muted-foreground">Books</p>
+                  <p className="mt-1 text-sm font-bold">{line?.sportsbooks.length ?? 0}</p>
+                </div>
+              </div>
+            </div>
+
+            {line ? (
+              <section className="rounded-xl border border-border bg-card/70 p-5 md:p-6">
+                <h2 className="mb-4 font-bold">Verified prices</h2>
+                <div className="space-y-3">
+                  {line.sportsbooks.map((book) => (
+                    <div key={book.key} className="rounded-lg border border-border/70 bg-muted/30 p-3">
+                      <p className="mb-2 text-xs font-bold">{book.title}</p>
+                      <div className="space-y-2">
+                        {book.markets.map((market) => (
+                          <div key={market.key} className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-mono text-[9px] uppercase text-muted-foreground">{market.label}</span>
+                            <div className="flex flex-wrap gap-2">
+                              {market.outcomes.map((outcome) => (
+                                <span key={outcome.name} className="rounded border border-primary/20 bg-primary/5 px-2 py-1 text-[10px]">
+                                  {outcome.name} {outcome.point !== null ? pointLabel(outcome.point, market.key) : ''}{' '}
+                                  <b className="text-primary">{price(outcome.price)}</b>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : (
+              <EmptyState icon={Clock3} title="No verified prices" body="No sportsbook partner published a line for this game." />
+            )}
+          </div>
+        ) : null}
+      </QueryState>
+    </>
+  );
+}
+
+function Router() {
   const [location] = useLocation();
-  return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
+  return (
+    <ErrorBoundary resetKey={location}>
+      <AppShell>
+        <Switch>
+          <Route path="/" component={Home} />
+          <Route path="/picks" component={PicksPage} />
+          <Route path="/props" component={PropsPage} />
+          <Route path="/matchups" component={MatchupsPage} />
+          <Route path="/players" component={PlayersPage} />
+          <Route path="/players/:playerId" component={PlayerDetailPage} />
+          <Route path="/teams" component={TeamsPage} />
+          <Route path="/teams/:teamId" component={TeamDetailPage} />
+          <Route path="/watchlist" component={WatchlistPage} />
+          <Route path="/audit" component={AuditPage} />
+          <Route path="/admin" component={AdminPage} />
+          <Route path="/games/:gameId" component={GameDetailRoute} />
+          <Route component={NotFound} />
+        </Switch>
+      </AppShell>
+    </ErrorBoundary>
+  );
 }
+
 function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><RoutedErrorBoundary><AppShell/></RoutedErrorBoundary></WouterRouter><Toaster/></TooltipProvider></QueryClientProvider>;
+  useEffect(() => {
+    document.documentElement.classList.add('dark');
+  }, []);
+
+  return (
+    <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+      <Router />
+    </WouterRouter>
+  );
 }
+
 export default App;

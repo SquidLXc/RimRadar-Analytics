@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 
 const groups = [
-  { label: 'COURT SIDE', items: [['Overview', '/', LayoutDashboard], ['Top signals', '/snipes', Crosshair], ['Prop board', '/props', BarChart3], ['Matchups', '/matchups', Activity]] },
+  { label: 'COURT SIDE', items: [['Overview', '/', LayoutDashboard], ['Radar picks', '/picks', Crosshair], ['Prop board', '/props', BarChart3], ['Matchups', '/matchups', Activity]] },
   { label: 'THE LEAGUE', items: [['Players', '/players', Users], ['Teams', '/teams', ShieldCheck]] },
   { label: 'MY WORKSPACE', items: [['Slip builder', '/slip-builder', SlidersHorizontal], ['Watchlist', '/watchlist', Bookmark]] },
   { label: 'MODEL ROOM', items: [['Model audit', '/audit', Database], ['Performance', '/performance', Gauge]] },
@@ -20,7 +20,7 @@ export function Current() {
     <aside className={`sidebar ${mobileOpen ? 'sidebar-open' : ''}`}>
       <a href="#" className="brand-lockup" onClick={(event) => event.preventDefault()}>
         <span className="brand-mark"><span/><span/><span/></span>
-        <span className="brand-name">NBA<span>SNIPES</span><small>ANALYTICS</small></span>
+        <span className="brand-name">RIM<span>RADAR</span><small>ANALYTICS</small></span>
       </a>
       <div className="sidebar-season"><span className="season-dot"/> NBA SEASON <span className="season-tag">NO FEED</span></div>
       <nav className="side-nav">
@@ -40,8 +40,8 @@ export function Current() {
     <div className="main-column">
       <header className="topbar">
         <button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={19}/></button>
-        <div className="crumb"><span>NBA SNIPES</span><b>/</b><strong>OVERVIEW</strong></div>
-        <div className="topbar-right"><span className="demo-pill"><span/>NO VERIFIED DATA</span><span className="topbar-season">FEEDS NOT CONNECTED</span><div className="user-mark">NS</div></div>
+        <div className="crumb"><span>RIM RADAR</span><b>/</b><strong>OVERVIEW</strong></div>
+        <div className="topbar-right"><span className="demo-pill"><span/>NO VERIFIED DATA</span><span className="topbar-season">FEEDS NOT CONNECTED</span><div className="user-mark">RR</div></div>
       </header>
       <div className="page-wrap">
         <main className="page-content">
@@ -88,7 +88,7 @@ export function Current() {
           </section>
           <div className="disclaimer-strip"><ShieldAlert size={15}/><span>There are no picks or projections in this preview. The previous sample figures are intentionally omitted.</span></div>
         </main>
-        <footer className="page-footer"><span>NBA SNIPES ANALYTICS <i>·</i> INDEPENDENT RESEARCH</span><span>Not affiliated with or endorsed by the National Basketball Association.</span></footer>
+        <footer className="page-footer"><span>RIM RADAR <i>·</i> INDEPENDENT RESEARCH</span><span>Not affiliated with or endorsed by the National Basketball Association.</span></footer>
       </div>
     </div>
   </div>;

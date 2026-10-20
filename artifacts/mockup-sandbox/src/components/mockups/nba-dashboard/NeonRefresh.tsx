@@ -55,9 +55,9 @@ export function NeonRefresh() {
   return (
     <div className="neon-dashboard" id="overview">
       <aside className={`nd-sidebar ${mobileOpen ? 'nd-sidebar-open' : ''}`}>
-        <a className="nd-brand" href="#overview" onClick={() => setMobileOpen(false)} aria-label="NBA Snipes Analytics overview">
+        <a className="nd-brand" href="#overview" onClick={() => setMobileOpen(false)} aria-label="Rim Radar overview">
           <span className="nd-brand-mark" aria-hidden="true"><i /><i /><i /></span>
-          <span className="nd-brand-type">NBA<span>SNIPES</span><small>ANALYTICS / COURTSIDE</small></span>
+          <span className="nd-brand-type">RIM<span>RADAR</span><small>ANALYTICS / COURTSIDE</small></span>
         </a>
 
         <div className="nd-season">
@@ -100,11 +100,11 @@ export function NeonRefresh() {
       <div className="nd-main">
         <header className="nd-topbar">
           <button className="nd-icon-button nd-mobile-menu" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={19} /></button>
-          <div className="nd-breadcrumb"><span>NBA SNIPES</span><b>/</b><strong>SLATE OVERVIEW</strong></div>
+          <div className="nd-breadcrumb"><span>RIM RADAR</span><b>/</b><strong>SLATE OVERVIEW</strong></div>
           <div className="nd-top-actions">
             <span className="nd-connection-pill"><i /> NO VERIFIED DATA</span>
             <span className="nd-top-caption">SOURCE CONNECTION REQUIRED</span>
-            <span className="nd-avatar">NS</span>
+            <span className="nd-avatar">RR</span>
           </div>
         </header>
 
@@ -156,7 +156,7 @@ export function NeonRefresh() {
               <div className="nd-status-value">—<small> SLATE</small></div>
               <div className="nd-status-card-foot"><span>Awaiting connected sources</span><ArrowUpRight size={15} /></div>
             </div>
-            <div className="nd-hero-index" aria-hidden="true">NS / 01</div>
+            <div className="nd-hero-index" aria-hidden="true">RR / 01</div>
           </section>
 
           <section className="nd-metrics" aria-label="Research coverage">
@@ -234,7 +234,7 @@ export function NeonRefresh() {
           <div className="nd-disclaimer"><ShieldAlert size={14} /><span>Independent research interface. No verified NBA or sportsbook data is connected; all unavailable values are intentionally shown as em dashes.</span><span className="nd-disclaimer-tag">NO DEMO DATA</span></div>
         </main>
 
-        <footer className="nd-footer"><span>NBA SNIPES ANALYTICS <i>·</i> SOURCE-FIRST RESEARCH</span><span>Not affiliated with or endorsed by the National Basketball Association.</span></footer>
+        <footer className="nd-footer"><span>RIM RADAR <i>·</i> SOURCE-FIRST RESEARCH</span><span>Not affiliated with or endorsed by the National Basketball Association.</span></footer>
       </div>
     </div>
   );

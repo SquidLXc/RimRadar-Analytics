@@ -1,23 +1,24 @@
-# NBA Snipes Analytics
+# RimRaider
 
-An NBA-focused player-prop analytics site with a Render-ready single-service deployment.
+An NBA research terminal with live ESPN data and a Render-ready single-service deployment.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `PORT=5000 pnpm --filter @workspace/api-server run dev` — API server (ESPN provider)
+- `PORT=5173 pnpm --filter @workspace/nba-snipes run dev` — Vite web app (proxies `/api` to port 5000)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - `pnpm run build:render` / `pnpm run start:render` — build and run the combined app as one Render Node service
-- No NBA or sportsbook provider is connected yet; the app uses clearly labeled demo data.
-- Keep future third-party credentials in deployment environment variables, never in source control.
+- ESPN's public NBA endpoints supply schedule, scores, teams, rosters, injuries and game lines; no key is needed for those.
+- `DUNKAPI_API_KEY` (in `artifacts/api-server/.env` locally, an environment variable in deployment) enables player-prop lines and the Radar Picks model. Keep it out of source control.
+- Optional tuning: `DUNKAPI_CACHE_MINUTES` (360), `DUNKAPI_MAX_GAMES` (1), `DUNKAPI_MAX_PLAYERS` (6), `DUNKAPI_MIN_EDGE` (0.025), `DUNKAPI_MAX_PICKS` (12).
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - API: Express 5
-- DB: PostgreSQL + Drizzle ORM
+- DB: PostgreSQL + Drizzle ORM (scaffolded, not used by the live feed yet)
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
@@ -26,7 +27,10 @@ An NBA-focused player-prop analytics site with a Render-ready single-service dep
 
 - `artifacts/nba-snipes/` — NBA web app
 - `artifacts/api-server/src/routes/nba.ts` — NBA API routes
-- `artifacts/api-server/src/providers/nba.ts` — replaceable provider, currently illustrative demo data
+- `artifacts/api-server/src/providers/espn.ts` — ESPN adapter (raw provider payloads)
+- `artifacts/api-server/src/providers/dunkapi.ts` — DunkAPI client (schedule, props, player logs, injuries) with credit accounting
+- `artifacts/api-server/src/providers/picks.ts` — cached Radar Picks model: form projection, de-vig, edge threshold, rationale
+- `artifacts/api-server/src/providers/nba.ts` — cached provider layer, status and feeds
 - `lib/api-spec/openapi.yaml` — source of truth for API types and generated hooks
 - `render.yaml` — one-service Render Blueprint
 - `README.md` — local and Render deployment notes
@@ -34,22 +38,22 @@ An NBA-focused player-prop analytics site with a Render-ready single-service dep
 ## Architecture decisions
 
 - The NBA frontend and `/api` endpoints share one origin on Render; Express serves both the built Vite app and API.
-- The initial provider is demo-only. Live stats, injury, schedule, and sportsbook data require a separately selected provider.
-- Watchlists and slip-builder state are browser-local; no account or server-side personal data is required yet.
+- Local development uses a Vite proxy from `/api` to `http://localhost:5000` (`API_PROXY_TARGET` overrides the target).
+- ESPN is the provider for schedule, scores, teams, rosters, injuries and published game lines.
+- Player props come from DunkAPI, not ESPN. `/api/nba/props` and `/api/nba/picks` are generated together by `picks.ts` and cached for 6 hours; without `DUNKAPI_API_KEY` they return empty arrays and the UI explains why. No placeholder edges are generated.
+- The picks model is deterministic statistics, not an LLM: last-10-game recency-weighted projection blended with the latest regular-season baseline, a normal distribution widened for small samples, and a comparison against the de-vigged market probability at the most-quoted line. Wording in the rationale is generated from those numbers.
+- Watchlists are browser-local; there are no accounts or server-side personal data.
 
 ## Product
 
-The app is modeled on the user's separate NHL analytics product, with NBA stat markets and no hockey-specific goalie features. It includes an overview, ranked signals, props, slip builder, matchups, player/team profiles, watchlist, live-alert state, audit trail, and model performance.
-
-## User preferences
-
-- Build this as a separate NBA product; do not modify the NHL reference repository.
-- The app must work on Render.
+The app includes an overview, Radar Picks, prop board, matchups, player and team profiles, a browser-local watchlist, an audit trail stub, and an ops/data-health page. Radar Picks and the prop board are populated from DunkAPI lines plus the model. Model performance and audit records remain empty until settled picks are stored and scored.
 
 ## Gotchas
 
-- Demo schedules, stats, lines, and model values are illustrative—not current or verified data.
-- Use generated API hooks from `@workspace/api-client-react` for frontend calls and keep OpenAPI/codegen in sync.
+- ESPN's schedule is Eastern-time based; "today" is computed in `America/New_York`, not UTC.
+- ESPN team abbreviations differ from common ones (`GS`, `NY`, `NO`, `SA`, `UTAH`, `WSH`); conference/division mapping lives in the adapter.
+- Rosters are fetched for all 30 teams and cached for an hour; the first Players request is slow by design.
+- Player headshots and team logos are loaded from ESPN CDN URLs.
 
 ## Pointers
 

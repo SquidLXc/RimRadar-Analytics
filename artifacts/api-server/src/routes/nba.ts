@@ -1,9 +1,11 @@
 import { Router, type IRouter } from "express";
 import {
+  GetDataHealthResponse,
   GetNbaAuditResponse,
   GetNbaDashboardSummaryQueryParams,
   GetNbaDashboardSummaryResponse,
   GetNbaDataStatusResponse,
+  GetNbaFutureGamesResponse,
   GetNbaGameParams,
   GetNbaGameResponse,
   GetNbaGamesQueryParams,
@@ -11,17 +13,21 @@ import {
   GetNbaLiveAlertsResponse,
   GetNbaMatchupsResponse,
   GetNbaModelPerformanceResponse,
+  GetNbaOddsResponse,
+  GetNbaPicksQueryParams,
+  GetNbaPicksResponse,
+  GetNbaPicksStatusResponse,
   GetNbaPlayerParams,
   GetNbaPlayerResponse,
   GetNbaPlayersQueryParams,
   GetNbaPlayersResponse,
   GetNbaPropsQueryParams,
   GetNbaPropsResponse,
-  GetNbaSnipesQueryParams,
-  GetNbaSnipesResponse,
   GetNbaTeamParams,
   GetNbaTeamResponse,
   GetNbaTeamsResponse,
+  GetNbaTodayGamesResponse,
+  SyncNbaDataResponse,
 } from "@workspace/api-zod";
 import { nbaProvider } from "../providers/nba";
 
@@ -32,22 +38,41 @@ router.get("/healthz", (_req, res) => {
 });
 
 router.get("/nba/data-status", (_req, res) => {
-  res.json(GetNbaDataStatusResponse.parse(nbaProvider.getDataStatus()));
+  const status = nbaProvider.getDataStatus();
+  const picks = nbaProvider.getPicksStatusCached();
+  const picksLine =
+    picks.picksGenerated > 0
+      ? `${picks.picksGenerated} live picks across ${picks.slateGames} slate games.`
+      : picks.message;
+  res.json(GetNbaDataStatusResponse.parse({ ...status, message: `${status.message} ${picksLine}` }));
 });
 
-router.get("/nba/dashboard/summary", (req, res) => {
+router.get("/nba/dashboard/summary", async (req, res) => {
   const query = GetNbaDashboardSummaryQueryParams.parse(req.query);
-  res.json(GetNbaDashboardSummaryResponse.parse(nbaProvider.getDashboard(query.date)));
+  const dashboard = await nbaProvider.getDashboard(query.date);
+  res.json(GetNbaDashboardSummaryResponse.parse(dashboard));
 });
 
-router.get("/nba/games", (req, res) => {
+// Fixed paths must be registered before "/nba/games/:gameId".
+router.get("/nba/games/today", async (_req, res) => {
+  const games = await nbaProvider.getTodayGames();
+  res.json(GetNbaTodayGamesResponse.parse(games));
+});
+
+router.get("/nba/games/future", async (_req, res) => {
+  const games = await nbaProvider.getFutureGames();
+  res.json(GetNbaFutureGamesResponse.parse(games));
+});
+
+router.get("/nba/games", async (req, res) => {
   const query = GetNbaGamesQueryParams.parse(req.query);
-  res.json(GetNbaGamesResponse.parse(nbaProvider.getGames(query.date, query.status)));
+  const games = await nbaProvider.getGames(query.date, query.status);
+  res.json(GetNbaGamesResponse.parse(games));
 });
 
-router.get("/nba/games/:gameId", (req, res) => {
+router.get("/nba/games/:gameId", async (req, res) => {
   const params = GetNbaGameParams.parse(req.params);
-  const game = nbaProvider.getGame(params.gameId);
+  const game = await nbaProvider.getGame(params.gameId);
   if (!game) {
     res.status(404).json({ error: "Game not found" });
     return;
@@ -55,14 +80,15 @@ router.get("/nba/games/:gameId", (req, res) => {
   res.json(GetNbaGameResponse.parse(game));
 });
 
-router.get("/nba/players", (req, res) => {
+router.get("/nba/players", async (req, res) => {
   const query = GetNbaPlayersQueryParams.parse(req.query);
-  res.json(GetNbaPlayersResponse.parse(nbaProvider.getPlayers(query.search, query.team)));
+  const players = await nbaProvider.getPlayers(query.search, query.team);
+  res.json(GetNbaPlayersResponse.parse(players));
 });
 
-router.get("/nba/players/:playerId", (req, res) => {
+router.get("/nba/players/:playerId", async (req, res) => {
   const params = GetNbaPlayerParams.parse(req.params);
-  const player = nbaProvider.getPlayer(params.playerId);
+  const player = await nbaProvider.getPlayer(params.playerId);
   if (!player) {
     res.status(404).json({ error: "Player not found" });
     return;
@@ -70,13 +96,14 @@ router.get("/nba/players/:playerId", (req, res) => {
   res.json(GetNbaPlayerResponse.parse(player));
 });
 
-router.get("/nba/teams", (_req, res) => {
-  res.json(GetNbaTeamsResponse.parse(nbaProvider.getTeams()));
+router.get("/nba/teams", async (_req, res) => {
+  const teams = await nbaProvider.getTeams();
+  res.json(GetNbaTeamsResponse.parse(teams));
 });
 
-router.get("/nba/teams/:teamId", (req, res) => {
+router.get("/nba/teams/:teamId", async (req, res) => {
   const params = GetNbaTeamParams.parse(req.params);
-  const team = nbaProvider.getTeam(params.teamId);
+  const team = await nbaProvider.getTeam(params.teamId);
   if (!team) {
     res.status(404).json({ error: "Team not found" });
     return;
@@ -84,22 +111,34 @@ router.get("/nba/teams/:teamId", (req, res) => {
   res.json(GetNbaTeamResponse.parse(team));
 });
 
-router.get("/nba/props", (req, res) => {
+router.get("/nba/props", async (req, res) => {
   const query = GetNbaPropsQueryParams.parse(req.query);
-  res.json(GetNbaPropsResponse.parse(nbaProvider.getProps(query.market)));
+  res.json(GetNbaPropsResponse.parse(await nbaProvider.getProps(query.market)));
 });
 
-router.get("/nba/snipes", (req, res) => {
-  const query = GetNbaSnipesQueryParams.parse(req.query);
-  res.json(GetNbaSnipesResponse.parse(nbaProvider.getSnipes(query.market)));
+// Registered before "/nba/picks" so the static suffix is always matched first.
+router.get("/nba/picks/status", async (_req, res) => {
+  res.json(GetNbaPicksStatusResponse.parse(await nbaProvider.getPicksStatus()));
 });
 
-router.get("/nba/matchups", (_req, res) => {
-  res.json(GetNbaMatchupsResponse.parse(nbaProvider.getMatchups()));
+router.get("/nba/picks", async (req, res) => {
+  const query = GetNbaPicksQueryParams.parse(req.query);
+  res.json(GetNbaPicksResponse.parse(await nbaProvider.getPicks(query.market)));
 });
 
-router.get("/nba/live-alerts", (_req, res) => {
-  res.json(GetNbaLiveAlertsResponse.parse(nbaProvider.getLiveAlerts()));
+router.get("/nba/odds", async (_req, res) => {
+  const feed = await nbaProvider.getOdds();
+  res.json(GetNbaOddsResponse.parse(feed));
+});
+
+router.get("/nba/matchups", async (_req, res) => {
+  const matchups = await nbaProvider.getMatchups();
+  res.json(GetNbaMatchupsResponse.parse(matchups));
+});
+
+router.get("/nba/live-alerts", async (_req, res) => {
+  const alerts = await nbaProvider.getLiveAlerts();
+  res.json(GetNbaLiveAlertsResponse.parse(alerts));
 });
 
 router.get("/nba/model-performance", (_req, res) => {
@@ -108,6 +147,16 @@ router.get("/nba/model-performance", (_req, res) => {
 
 router.get("/nba/audit", (_req, res) => {
   res.json(GetNbaAuditResponse.parse(nbaProvider.getAudit()));
+});
+
+router.get("/admin/data-health", async (_req, res) => {
+  const health = await nbaProvider.getDataHealth();
+  res.json(GetDataHealthResponse.parse(health));
+});
+
+router.post("/admin/sync", async (_req, res) => {
+  const result = await nbaProvider.sync();
+  res.json(SyncNbaDataResponse.parse(result));
 });
 
 export default router;

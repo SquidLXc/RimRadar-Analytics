@@ -5,15 +5,12 @@ import { defineConfig } from 'vite';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
-// Vite also loads this config during static asset builds, when Render may not
-// provide a runtime PORT. Use Vite's standard dev port in that case.
-const rawPort = process.env.PORT ?? '5173';
-
-const port = Number(rawPort);
-
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
+// Vite also loads this config during static asset builds, when Render or a
+// build runner may expose no PORT (or PORT=0). Use Vite's standard dev port in
+// that case instead of failing the build.
+const rawPort = process.env.PORT;
+const parsedPort = Number(rawPort);
+const port = Number.isInteger(parsedPort) && parsedPort > 0 ? parsedPort : 5173;
 
 const basePath = process.env.BASE_PATH ?? '/';
 
@@ -61,6 +58,14 @@ export default defineConfig({
     allowedHosts: true,
     fs: {
       strict: true,
+    },
+    // The API runs as a separate process in local dev and shares one origin on
+    // Render. Without this proxy every /api request hit Vite and returned 404.
+    proxy: {
+      '/api': {
+        target: process.env.API_PROXY_TARGET ?? 'http://localhost:5000',
+        changeOrigin: true,
+      },
     },
   },
   preview: {

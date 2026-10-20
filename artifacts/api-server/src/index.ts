@@ -1,5 +1,9 @@
 import app from "./app";
+import { loadLocalEnv } from "./lib/env";
 import { logger } from "./lib/logger";
+
+// Local development only; deployments inject real environment variables.
+loadLocalEnv();
 
 const rawPort = process.env["PORT"];
 

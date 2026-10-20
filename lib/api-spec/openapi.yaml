@@ -3,7 +3,7 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: NBA Snipes basketball analytics API
+  description: Rim Radar NBA basketball analytics API
 servers:
   - url: /api
     description: Base API path
@@ -79,6 +79,34 @@ paths:
       responses:
         "200":
           description: NBA games
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Game"
+  /nba/games/today:
+    get:
+      operationId: getNbaTodayGames
+      tags: [games]
+      summary: List today's NBA games
+      responses:
+        "200":
+          description: Today's games
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Game"
+  /nba/games/future:
+    get:
+      operationId: getNbaFutureGames
+      tags: [games]
+      summary: List upcoming NBA games
+      responses:
+        "200":
+          description: Upcoming games
           content:
             application/json:
               schema:
@@ -201,9 +229,9 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Prop"
-  /nba/snipes:
+  /nba/picks:
     get:
-      operationId: getNbaSnipes
+      operationId: getNbaPicks
       tags: [analytics]
       summary: List ranked player-prop edges
       parameters:
@@ -213,13 +241,25 @@ paths:
             $ref: "#/components/schemas/Market"
       responses:
         "200":
-          description: Ranked signals
+          description: Model-generated picks from DunkAPI player props. Empty when no key is configured or no edge clears the threshold.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Snipe"
+                  $ref: "#/components/schemas/Pick"
+  /nba/picks/status:
+    get:
+      operationId: getNbaPicksStatus
+      tags: [analytics]
+      summary: Get the picks model and provider status
+      responses:
+        "200":
+          description: Model status and credit usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicksStatus"
   /nba/matchups:
     get:
       operationId: getNbaMatchups
@@ -274,6 +314,42 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/AuditRecord"
+  /nba/odds:
+    get:
+      operationId: getNbaOdds
+      tags: [analytics]
+      summary: Get game-level sportsbook odds
+      responses:
+        "200":
+          description: Odds by game and sportsbook. No prices are fabricated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OddsFeed"
+  /admin/data-health:
+    get:
+      operationId: getDataHealth
+      tags: [health]
+      summary: Get provider import health
+      responses:
+        "200":
+          description: Provider health and import counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataHealth"
+  /admin/sync:
+    post:
+      operationId: syncNbaData
+      tags: [health]
+      summary: Refresh the provider cache and report import counts
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncResult"
 components:
   schemas:
     HealthStatus:
@@ -310,7 +386,8 @@ components:
         conference: { type: string, enum: [East, West] }
         division: { type: string }
         color: { type: string }
-      required: [id, abbreviation, name, city, conference, division, color]
+        logoUrl: { type: [string, "null"], format: uri }
+      required: [id, abbreviation, name, city, conference, division, color, logoUrl]
     Game:
       type: object
       properties:
@@ -324,7 +401,8 @@ components:
         awayScore: { type: ["integer", "null"] }
         period: { type: ["integer", "null"] }
         clock: { type: ["string", "null"] }
-      required: [id, date, tipoff, status, homeTeam, awayTeam, homeScore, awayScore, period, clock]
+        venue: { type: ["string", "null"] }
+      required: [id, date, tipoff, status, homeTeam, awayTeam, homeScore, awayScore, period, clock, venue]
     Player:
       type: object
       properties:
@@ -335,15 +413,15 @@ components:
         jerseyNumber: { type: ["string", "null"] }
         status: { type: string }
         headshotUrl: { type: ["string", "null"], format: uri }
-        points: { type: number }
-        rebounds: { type: number }
-        assists: { type: number }
-        threes: { type: number }
-        steals: { type: number }
-        blocks: { type: number }
-        turnovers: { type: number }
-        minutes: { type: number }
-        usageRate: { type: number }
+        points: { type: [number, "null"], description: Season average. Null when the provider has not supplied it. }
+        rebounds: { type: [number, "null"] }
+        assists: { type: [number, "null"] }
+        threes: { type: [number, "null"] }
+        steals: { type: [number, "null"] }
+        blocks: { type: [number, "null"] }
+        turnovers: { type: [number, "null"] }
+        minutes: { type: [number, "null"] }
+        usageRate: { type: [number, "null"] }
       required: [id, name, team, position, jerseyNumber, status, headshotUrl, points, rebounds, assists, threes, steals, blocks, turnovers, minutes, usageRate]
     GameLog:
       type: object
@@ -366,8 +444,9 @@ components:
         recentGames:
           type: array
           items: { $ref: "#/components/schemas/GameLog" }
+        seasonLabel: { type: ["string", "null"] }
         dataStatus: { $ref: "#/components/schemas/DataStatus" }
-      required: [player, recentGames, dataStatus]
+      required: [player, recentGames, seasonLabel, dataStatus]
     TeamDetail:
       type: object
       properties:
@@ -404,7 +483,7 @@ components:
           items: { type: string }
         dataStatus: { $ref: "#/components/schemas/DataStatus" }
       required: [id, playerId, playerName, team, opponent, market, line, projection, overProbability, overOdds, underOdds, sportsbook, edge, confidence, rationale, dataStatus]
-    Snipe:
+    Pick:
       allOf:
         - $ref: "#/components/schemas/Prop"
         - type: object
@@ -422,20 +501,39 @@ components:
         topConfidence: { type: ["number", "null"], minimum: 0, maximum: 1, description: Highest model probability from 0 to 1. }
         topEdges:
           type: array
-          items: { $ref: "#/components/schemas/Snipe" }
+          items: { $ref: "#/components/schemas/Pick" }
         games:
           type: array
           items: { $ref: "#/components/schemas/Game" }
+        modelVersion:
+          type: string
+          description: Reporting mode of the current build. Not a model claim when no model is connected.
+        marketPerformance:
+          type: array
+          items: { $ref: "#/components/schemas/ModelPerformance" }
         dataStatus: { $ref: "#/components/schemas/DataStatus" }
-      required: [date, gamesOnSlate, liveGames, playersAnalyzed, topConfidence, topEdges, games, dataStatus]
+      required: [date, gamesOnSlate, liveGames, playersAnalyzed, topConfidence, topEdges, games, modelVersion, marketPerformance, dataStatus]
+    PicksStatus:
+      type: object
+      properties:
+        configured: { type: boolean }
+        provider: { type: string }
+        modelVersion: { type: string }
+        lastUpdated: { type: [string, "null"], format: date-time }
+        message: { type: string }
+        creditsSpent: { type: integer, description: Estimated DunkAPI credits spent by this server process. }
+        slateGames: { type: integer }
+        playersAnalyzed: { type: integer }
+        picksGenerated: { type: integer }
+      required: [configured, provider, modelVersion, lastUpdated, message, creditsSpent, slateGames, playersAnalyzed, picksGenerated]
     Matchup:
       type: object
       properties:
         game: { $ref: "#/components/schemas/Game" }
-        projectedPace: { type: number }
-        projectedTotal: { type: number }
-        homeOffenseRating: { type: number }
-        awayOffenseRating: { type: number }
+        projectedPace: { type: [number, "null"] }
+        projectedTotal: { type: [number, "null"] }
+        homeOffenseRating: { type: [number, "null"] }
+        awayOffenseRating: { type: [number, "null"] }
         notes:
           type: array
           items: { type: string }
@@ -470,6 +568,73 @@ components:
         roi: { type: ["number", "null"] }
         status: { type: string, enum: [demo, tracking, verified] }
       required: [market, sampleSize, hitRate, averageError, roi, status]
+    OddsOutcome:
+      type: object
+      properties:
+        name: { type: string }
+        price: { type: integer, description: American odds price as reported by the provider. }
+        point: { type: [number, "null"] }
+      required: [name, price, point]
+    OddsMarket:
+      type: object
+      properties:
+        key: { type: string }
+        label: { type: string }
+        outcomes:
+          type: array
+          items: { $ref: "#/components/schemas/OddsOutcome" }
+      required: [key, label, outcomes]
+    Sportsbook:
+      type: object
+      properties:
+        key: { type: string }
+        title: { type: string }
+        lastUpdate: { type: [string, "null"], format: date-time }
+        markets:
+          type: array
+          items: { $ref: "#/components/schemas/OddsMarket" }
+      required: [key, title, lastUpdate, markets]
+    OddsGame:
+      type: object
+      properties:
+        game: { $ref: "#/components/schemas/Game" }
+        sportsbooks:
+          type: array
+          items: { $ref: "#/components/schemas/Sportsbook" }
+      required: [game, sportsbooks]
+    OddsFeed:
+      type: object
+      properties:
+        configured: { type: boolean }
+        provider: { type: [string, "null"] }
+        priceType: { type: string, description: Type of price shown, e.g. American. }
+        games:
+          type: array
+          items: { $ref: "#/components/schemas/OddsGame" }
+      required: [configured, provider, priceType, games]
+    DataHealth:
+      type: object
+      properties:
+        provider: { type: string }
+        connection: { type: string, enum: [connected, error, not_configured] }
+        lastSuccessfulSync: { type: [string, "null"], format: date-time }
+        lastAttemptedSync: { type: [string, "null"], format: date-time }
+        teamsImported: { type: integer }
+        gamesImported: { type: integer }
+        playersImported: { type: integer }
+        errors:
+          type: array
+          items: { type: string }
+      required: [provider, connection, lastSuccessfulSync, lastAttemptedSync, teamsImported, gamesImported, playersImported, errors]
+    SyncResult:
+      type: object
+      properties:
+        ok: { type: boolean }
+        teamsImported: { type: integer }
+        gamesImported: { type: integer }
+        playersImported: { type: integer }
+        message: { type: string }
+      required: [ok, teamsImported, gamesImported, playersImported, message]
     AuditRecord:
       type: object
       properties:

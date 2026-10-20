@@ -10,3 +10,5 @@ services:
         value: "24"
       - key: NODE_ENV
         value: production
+      - key: DUNKAPI_API_KEY
+        sync: false
